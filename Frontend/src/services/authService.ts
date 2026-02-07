@@ -30,7 +30,7 @@ export const authService = {
   },
   
   fetchMe: async () => {
-    const response = await api.get("/users/me", {withCredentials: true}); // lấy thông tin người dùng hiện tại
+    const response = await api.get("/users/profile", {withCredentials: true}); // lấy thông tin người dùng hiện tại
     return response.data; // Gửi về dữ liệu người dùng cho store
   },
 

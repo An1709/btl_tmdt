@@ -15,7 +15,8 @@ const userSchema = new mongoose.Schema({
         trim: true,
         lowercase: true
     },
-    hashedPassword: {
+    // Giữ tên là hashedPassword để khớp với code controller của bạn
+    hashedPassword: { 
         type: String,
         required: true
     },
@@ -26,6 +27,7 @@ const userSchema = new mongoose.Schema({
     },
     avatarUrl: {
         type: String,
+        default: 'https://res.cloudinary.com/dtiq872/image/upload/v1/default-avatar.png'
     },
     avatarId: {
         type: String,
@@ -34,9 +36,23 @@ const userSchema = new mongoose.Schema({
         type: String,
         maxlength: 160,
     },
+    
+    // Vẫn cần thêm các trường này cho E-commerce
+    role: {
+        type: String,
+        enum: ['customer', 'admin', 'staff'],
+        default: 'customer'
+    },
     phone: {
         type: String,
-        sparse: true, //cho phép giá trị null cho trường này
+        sparse: true, 
+    },
+    address: { 
+        type: String, 
+    },
+    isBlocked: { 
+        type: Boolean, 
+        default: false 
     },
     
 }, {

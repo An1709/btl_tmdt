@@ -1,0 +1,1 @@
+//Close modals/dropdowns on outside click

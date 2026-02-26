@@ -1,0 +1,1 @@
+// Centered layout for Login/Register pages

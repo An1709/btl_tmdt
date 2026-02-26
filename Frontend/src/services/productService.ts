@@ -1,0 +1,1 @@
+//Get All, Detail, Create, Update, Delete, Review

@@ -1,0 +1,1 @@
+//Global State Management (Zustand): Store UI state (Dark mode, Sidebar open/close)

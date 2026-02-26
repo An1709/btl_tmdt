@@ -1,0 +1,1 @@
+// Standard layout: Header + Outlet + Footer

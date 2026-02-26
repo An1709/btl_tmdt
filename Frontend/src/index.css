@@ -7,172 +7,252 @@
 @layer base {
   :root {
     /* ===== BASE ===== */
-    --background: 0 0% 100%;
-    --foreground: 217 33% 17%;
+    --background: 0 0% 98%;
+    --foreground: 220 25% 18%;
 
     /* Card / Popover */
     --card: 0 0% 100%;
-    --card-foreground: 217 33% 17%;
+    --card-foreground: 220 25% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 217 33% 17%;
+    --popover-foreground: 220 25% 18%;
 
-    /* ===== PRIMARY (BLUE) ===== */
-    --primary: 217 91% 60%;
+    /* ===== PRIMARY: Coral #FF6B6B ===== */
+    --primary: 0 100% 71%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 195 100% 70%;
+    --primary-glow: 0 100% 80%;
 
-    /* Secondary */
-    --secondary: 217 40% 92%;
-    --secondary-foreground: 217 80% 35%;
+    /* ===== SECONDARY: Mint #4ECDC4 ===== */
+    --secondary: 177 52% 55%;
+    --secondary-foreground: 0 0% 100%;
 
     /* Muted */
-    --muted: 217 30% 95%;
-    --muted-foreground: 217 15% 50%;
+    --muted: 220 20% 95%;
+    --muted-foreground: 220 15% 50%;
 
-    /* Accent */
-    --accent: 195 100% 65%;
-    --accent-foreground: 217 33% 15%;
+    /* Accent: warm yellow #FFE66D */
+    --accent: 50 100% 71%;
+    --accent-foreground: 220 25% 18%;
 
-    /* Chat */
-    --chat-bubble-sent: 217 91% 60%;
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Warning / Info */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 198 100% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Border / Input */
+    --border: 220 15% 88%;
+    --input: 220 20% 94%;
+    --ring: 0 100% 71%;
+
+    /* Radius */
+    --radius: 0.75rem;
+
+    /* ===== PET MART BRAND TOKENS ===== */
+    --pet-coral: #FF6B6B;
+    --pet-mint: #4ECDC4;
+    --pet-warm: #FFE66D;
+    --pet-peach: #FFA07A;
+    --pet-lavender: #C3B1E1;
+    --pet-soft-pink: #FFB3C1;
+
+    /* ===== GRADIENTS ===== */
+    --gradient-hero: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 40%, #4ECDC4 100%);
+    --gradient-primary: linear-gradient(135deg, #FF6B6B, #FF8E53);
+    --gradient-mint: linear-gradient(135deg, #4ECDC4, #44A08D);
+    --gradient-warm: linear-gradient(135deg, #FFE66D, #FF8C69);
+    --gradient-card: linear-gradient(145deg, #ffffff 0%, #fff8f8 100%);
+    --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 248, 248, 0.85) 100%);
+
+    /* Shadows */
+    --shadow-soft: 0 4px 24px -4px rgba(255, 107, 107, 0.15);
+    --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.08);
+    --shadow-card-hover: 0 8px 32px rgba(255, 107, 107, 0.2);
+    --shadow-glow: 0 0 40px rgba(255, 107, 107, 0.35);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* Chat (kept for compatibility) */
+    --chat-bubble-sent: 0 100% 71%;
     --chat-bubble-sent-foreground: 0 0% 100%;
     --chat-bubble-received: 0 0% 96%;
-    --chat-bubble-received-foreground: 217 20% 20%;
+    --chat-bubble-received-foreground: 220 20% 20%;
 
     /* Status */
     --online: 140 100% 45%;
     --offline: 0 0% 70%;
 
-    /* Info / Warning / Danger */
-    --info: 198 100% 45%;
-    --info-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    /* Border / Input */
-    --border: 217 20% 90%;
-    --input: 217 30% 92%;
-    --ring: 217 91% 60%;
-
-    /* Radius */
-    --radius: 1rem;
-
-    /* ===== GRADIENTS (BLUE) ===== */
-    --gradient-primary: linear-gradient(
-      135deg,
-      hsl(217 91% 60%),
-      hsl(195 100% 70%)
-    );
-
-    --gradient-chat: linear-gradient(
-      135deg,
-      hsl(217 91% 60%),
-      hsl(200 100% 70%)
-    );
-
-    --gradient-accent: linear-gradient(
-      90deg,
-      hsl(195 100% 65%),
-      hsl(200 100% 70%)
-    );
-
-    --gradient-glass: linear-gradient(
-      135deg,
-      hsl(210 40% 98%) 0%,
-      hsl(210 40% 95%) 100%
-    );
-
-    --gradient-pattern: radial-gradient(
-      120% 120% at 50% 10%,
-      hsl(0 0% 100%) 40%,
-      hsl(217 91% 60% / 0.25) 100%
-    );
-
-    /* Shadows */
-    --shadow-soft: 0 8px 32px -8px hsl(217 91% 60% / 0.15);
-    --shadow-glow: 0 0 40px hsl(217 91% 60% / 0.35);
-    --shadow-bubble: 0 4px 20px -4px hsl(217 80% 50% / 0.25);
-
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 217 25% 27%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-foreground: 220 25% 27%;
+    --sidebar-primary: 0 100% 71%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 40% 95%;
-    --sidebar-accent-foreground: 217 33% 17%;
-    --sidebar-border: 217 20% 90%;
-    --sidebar-ring: 217 91% 60%;
-
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --sidebar-accent: 177 52% 92%;
+    --sidebar-accent-foreground: 220 25% 18%;
+    --sidebar-border: 220 15% 88%;
+    --sidebar-ring: 0 100% 71%;
   }
 
   /* ===== DARK MODE ===== */
   .dark {
-    --background: 222 15% 12%;
-    --foreground: 214 32% 92%;
+    --background: 222 20% 10%;
+    --foreground: 210 30% 92%;
 
-    --card: 222 15% 10%;
-    --card-foreground: 214 32% 92%;
-    --popover: 222 15% 10%;
-    --popover-foreground: 214 32% 92%;
+    --card: 222 18% 13%;
+    --card-foreground: 210 30% 92%;
+    --popover: 222 18% 13%;
+    --popover-foreground: 210 30% 92%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 15% 8%;
-    --primary-glow: 195 100% 70%;
+    --primary: 0 100% 71%;
+    --primary-foreground: 222 20% 8%;
+    --primary-glow: 0 100% 80%;
 
-    --secondary: 217 20% 20%;
-    --secondary-foreground: 217 100% 80%;
+    --secondary: 177 52% 45%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 15% 15%;
-    --muted-foreground: 217 15% 70%;
+    --muted: 222 15% 18%;
+    --muted-foreground: 220 15% 60%;
 
-    --accent: 195 100% 60%;
-    --accent-foreground: 222 15% 8%;
+    --accent: 50 100% 65%;
+    --accent-foreground: 222 20% 8%;
 
-    --chat-bubble-sent: 217 91% 55%;
-    --chat-bubble-sent-foreground: 0 0% 100%;
-    --chat-bubble-received: 222 15% 15%;
-    --chat-bubble-received-foreground: 217 100% 90%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 20% 20%;
-    --input: 222 15% 15%;
-    --ring: 217 91% 60%;
+    --border: 220 15% 22%;
+    --input: 222 18% 16%;
+    --ring: 0 100% 71%;
 
-    --gradient-primary: linear-gradient(
-      135deg,
-      hsl(217 91% 65%),
-      hsl(195 100% 75%)
-    );
+    --gradient-card: linear-gradient(145deg, #1e2230 0%, #252a3a 100%);
+    --gradient-glass: linear-gradient(135deg, rgba(30, 34, 48, 0.95) 0%, rgba(37, 42, 58, 0.9) 100%);
+    --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.3);
+    --shadow-card-hover: 0 8px 32px rgba(255, 107, 107, 0.3);
+    --shadow-soft: 0 4px 24px -4px rgba(255, 107, 107, 0.25);
 
-    --gradient-pattern: radial-gradient(
-      120% 120% at 50% 10%,
-      hsl(0 0% 0%) 40%,
-      hsl(217 91% 60% / 0.35) 100%
-    );
-
-    --shadow-soft: 0 8px 32px -8px hsl(217 100% 60% / 0.25);
-    --shadow-glow: 0 0 40px hsl(217 91% 60% / 0.4);
+    --sidebar-background: 222 20% 10%;
+    --sidebar-foreground: 210 30% 85%;
+    --sidebar-primary: 0 100% 71%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 15% 18%;
+    --sidebar-accent-foreground: 210 30% 92%;
+    --sidebar-border: 220 15% 22%;
+    --sidebar-ring: 0 100% 71%;
   }
 
   body {
-    @apply text-slate-800 dark:text-slate-200;
+    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-background text-foreground;
+  }
+
+  * {
+    @apply border-border;
   }
 }
 
 /* ===== COMPONENTS ===== */
 @layer components {
+
+  /* ---- Pet Brand Buttons ---- */
+  .btn-pet-primary {
+    @apply bg-[var(--pet-coral)] text-white font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 hover:-translate-y-0.5 active:scale-95 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2;
+  }
+
+  .btn-pet-secondary {
+    @apply border-2 border-[var(--pet-coral)] text-[var(--pet-coral)] font-semibold px-5 py-2.5 rounded-xl hover:bg-[var(--pet-coral)] hover:text-white hover:-translate-y-0.5 active:scale-95 transition-all duration-200 flex items-center gap-2;
+  }
+
+  .btn-pet-mint {
+    @apply bg-[var(--pet-mint)] text-white font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 hover:-translate-y-0.5 active:scale-95 transition-all duration-200 shadow-md flex items-center gap-2;
+  }
+
+  /* ---- Glass card ---- */
   .glass {
-    @apply bg-gradient-to-br from-blue-200/10 to-cyan-100/10 border border-blue-300/30;
+    background: var(--gradient-glass);
+    @apply backdrop-blur-xl border border-white/30;
   }
 
   .dark .glass {
-    @apply backdrop-blur-xl bg-gradient-to-br from-white/10 to-white/5 border-white/20;
+    @apply backdrop-blur-xl bg-gradient-to-br from-white/8 to-white/4 border-white/10;
   }
 
+  /* ---- Pet Card ---- */
+  .pet-card {
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-card);
+    @apply rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-2;
+  }
+
+  .pet-card:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* ---- Section title ---- */
+  .section-title {
+    font-family: 'Nunito', sans-serif;
+    @apply text-2xl md:text-3xl font-extrabold text-foreground;
+  }
+
+  /* ---- Badge ---- */
+  .badge-new {
+    @apply bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide;
+  }
+
+  .badge-hot {
+    @apply bg-[var(--pet-coral)] text-white text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide;
+  }
+
+  .badge-sale {
+    @apply bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide;
+  }
+
+  /* ---- Rating stars ---- */
+  .star-filled {
+    @apply text-amber-400;
+  }
+
+  /* ---- Hero overlay ---- */
+  .hero-overlay {
+    background: linear-gradient(135deg,
+        rgba(255, 107, 107, 0.85) 0%,
+        rgba(255, 142, 83, 0.7) 50%,
+        rgba(78, 205, 196, 0.5) 100%);
+  }
+
+  /* ---- Gradient text ---- */
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-text-mint {
+    background: var(--gradient-mint);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ---- Category pill ---- */
+  .category-pill {
+    @apply flex flex-col items-center gap-1.5 px-5 py-3 rounded-2xl bg-white dark:bg-card border-2 border-transparent cursor-pointer transition-all duration-200 hover:border-[var(--pet-coral)] hover:shadow-md hover:-translate-y-0.5 font-semibold text-sm text-muted-foreground hover:text-[var(--pet-coral)] whitespace-nowrap;
+  }
+
+  .category-pill.active {
+    @apply border-[var(--pet-coral)] text-[var(--pet-coral)] bg-red-50 dark:bg-red-950/30;
+  }
+
+  /* ---- Feature icon box ---- */
+  .feature-box {
+    @apply flex flex-col items-center gap-3 p-6 rounded-2xl bg-white dark:bg-card shadow-sm hover:shadow-md transition-all duration-300 text-center;
+  }
+
+  /* ---- Existing utilities kept for chat compat ---- */
   .glass-strong {
     @apply backdrop-blur-2xl bg-gradient-to-br from-card/90 to-card/60 border border-border/70;
   }
@@ -197,20 +277,20 @@
     background: var(--gradient-primary);
   }
 
-  .bg-gradient-chat {
-    background: var(--gradient-chat);
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
   }
 
-  .bg-gradient-accent {
-    background: var(--gradient-accent);
+  .bg-gradient-mint {
+    background: var(--gradient-mint);
+  }
+
+  .bg-gradient-warm {
+    background: var(--gradient-warm);
   }
 
   .bg-gradient-glass {
     background: var(--gradient-glass);
-  }
-
-  .bg-gradient-pattern {
-    background: var(--gradient-pattern);
   }
 
   .shadow-soft {
@@ -228,4 +308,128 @@
   .transition-smooth {
     transition: var(--transition-smooth);
   }
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+
+  33% {
+    transform: translateY(-12px) rotate(3deg);
+  }
+
+  66% {
+    transform: translateY(-6px) rotate(-2deg);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-soft {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: float 7s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out both;
+}
+
+.animate-fade-in-left {
+  animation: fadeInLeft 0.5s ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Staggered delays */
+.delay-100 {
+  animation-delay: 0.1s;
+}
+
+.delay-200 {
+  animation-delay: 0.2s;
+}
+
+.delay-300 {
+  animation-delay: 0.3s;
+}
+
+.delay-400 {
+  animation-delay: 0.4s;
+}
+
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pet-coral);
+  border-radius: 999px;
+  opacity: 0.6;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 1;
 }

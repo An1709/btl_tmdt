@@ -84,8 +84,10 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
-        heading: ["Inter", "system-ui", "sans-serif"],
+        heading: ["Nunito", "Inter", "system-ui", "sans-serif"],
+        nunito: ["Nunito", "system-ui", "sans-serif"],
       },
+
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

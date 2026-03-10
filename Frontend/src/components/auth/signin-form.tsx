@@ -17,7 +17,7 @@ const signInSchema = z.object({ // kiểm tra dữ liệu đầu vào
 type SignInFormValues = z.infer<typeof signInSchema>; // kiểu dữ liệu của form signin
 
 export function SigninForm({ className, ...props }: React.ComponentProps<"div">) {
-  const {signIn} = useAuthStore();
+  const { signIn } = useAuthStore();
   const navigate = useNavigate();
   const {
     register,
@@ -30,7 +30,13 @@ export function SigninForm({ className, ...props }: React.ComponentProps<"div">)
   const onSubmit = async (data: SignInFormValues) => {
     const { username, password } = data;
     await signIn(username, password);
-    navigate("/");
+    // Read the latest user state directly from the store after signIn
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser?.role === "admin" || currentUser?.role === "staff") {
+      navigate("/admin");
+    } else {
+      navigate("/");
+    }
   };
 
   return (

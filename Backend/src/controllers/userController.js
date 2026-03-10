@@ -6,17 +6,20 @@ import User from '../models/User.js';
 export const getUserProfile = async (req, res) => {
     try {
         // req.user đã có từ middleware `protectedRoute`
-        const user = await User.findById(req.user._id).select('-password');
+        const user = await User.findById(req.user._id).select('-hashedPassword');
 
         if (user) {
             res.status(200).json({
                 _id: user._id,
-                fullName: user.fullName,
+                username: user.username,
+                displayName: user.displayName,
                 email: user.email,
                 role: user.role,
                 phone: user.phone,
                 address: user.address,
-                avatar: user.avatar,
+                avatarUrl: user.avatarUrl,
+                bio: user.bio,
+                isBlocked: user.isBlocked,
             });
         } else {
             res.status(404).json({ message: 'Không tìm thấy người dùng' });

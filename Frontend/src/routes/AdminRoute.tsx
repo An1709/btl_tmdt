@@ -11,8 +11,8 @@ const AdminRoute = () => {
         return <Navigate to="/signin" replace />;
     }
 
-    // Check admin role (extend User type or cast for now)
-    const isAdmin = (user as unknown as { role?: string }).role === "admin";
+    // Check admin role
+    const isAdmin = user.role === "admin";
     if (!isAdmin) {
         return <Navigate to="/" replace />;
     }

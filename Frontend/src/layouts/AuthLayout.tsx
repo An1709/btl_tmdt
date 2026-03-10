@@ -3,7 +3,8 @@ import { Outlet } from "react-router";
 
 const AuthLayout = () => {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-red-50 via-background to-teal-50 dark:from-red-950/20 dark:via-background dark:to-teal-950/20 flex flex-col items-center justify-center p-4">
+        // Sửa layout auth
+        <div className="min-h-screen bg-gradient-to-br from-red-50 via-background to-teal-50 dark:from-red-950/20 dark:via-background dark:to-teal-950/20 flex flex-col items-center justify-center px-4 py-8 md:py-10">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 mb-8 group">
                 <span className="text-4xl group-hover:animate-bounce">🐾</span>
@@ -15,8 +16,8 @@ const AuthLayout = () => {
                 </span>
             </Link>
 
-            {/* Content card */}
-            <div className="w-full max-w-md bg-white dark:bg-card rounded-3xl shadow-xl border border-border p-8">
+            {/* Sửa vùng nội dung*/}
+            <div className="w-full max-w-5xl">
                 <Outlet />
             </div>
 

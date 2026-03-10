@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import type { Product } from "@/types/product";
 import { useCartStore } from "@/stores/useCartStore";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { toast } from "sonner";
 
 interface ProductCardProps {
     product: Product;
@@ -37,10 +39,17 @@ const badgeConfig = {
 
 const ProductCard = ({ product }: ProductCardProps) => {
     const addItem = useCartStore((s) => s.addItem);
+    const { user } = useAuthStore();
+    const navigate = useNavigate();
     const [added, setAdded] = useState(false);
     const [wishlisted, setWishlisted] = useState(false);
 
     const handleAddToCart = () => {
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để thêm vào giỏ hàng!");
+            navigate("/signin");
+            return;
+        }
         addItem(product);
         setAdded(true);
         setTimeout(() => setAdded(false), 1500);

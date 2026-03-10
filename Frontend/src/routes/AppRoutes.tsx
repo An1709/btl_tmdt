@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router";
+import { Routes, Route, Link } from "react-router";
 
 import { Suspense, lazy } from "react";
 import Loading from "@/components/common/Loading";
@@ -11,6 +11,8 @@ import AdminRoute from "@/routes/AdminRoute";
 // Eager load small pages
 import HomePage from "@/pages/HomePage";
 import ProductPage from "@/pages/shop/ProductPage";
+import SignInPage from "@/pages/SignInPage";
+import SignUpPage from "@/pages/SignUpPage";
 
 // Lazy load heavier pages
 const ProductDetailPage = lazy(() => import("@/pages/shop/ProductDetailPage"));
@@ -22,6 +24,7 @@ const OrderHistoryPage = lazy(() => import("@/pages/user/OrderHistoryPage"));
 const OrderDetailPage = lazy(() => import("@/pages/user/OrderDetailPage"));
 const WishlistPage = lazy(() => import("@/pages/user/WishlistPage"));
 const WarrantyRequestPage = lazy(() => import("@/pages/user/WarrantyRequestPage"));
+const AboutPage = lazy(() => import("@/pages/AboutPage"));
 const BlogListPage = lazy(() => import("@/pages/blog/BlogListPage"));
 const BlogDetailPage = lazy(() => import("@/pages/blog/BlogDetailPage"));
 const DashboardPage = lazy(() => import("@/pages/admin/DashboardPage"));
@@ -43,6 +46,7 @@ const AppRoutes = () => (
             <Route index element={<HomePage />} />
             <Route path="shop" element={<ProductPage />} />
             <Route path="product/:id" element={<SuspenseWrap><ProductDetailPage /></SuspenseWrap>} />
+            <Route path="about" element={<SuspenseWrap><AboutPage /></SuspenseWrap>} />
             <Route path="blog" element={<SuspenseWrap><BlogListPage /></SuspenseWrap>} />
             <Route path="blog/:slug" element={<SuspenseWrap><BlogDetailPage /></SuspenseWrap>} />
 
@@ -65,9 +69,8 @@ const AppRoutes = () => (
 
         {/* ── Auth layout ── */}
         <Route element={<AuthLayout />}>
-            {/* SignIn / SignUp (provided by existing pages) */}
-            {/* <Route path="signin" element={<SignInPage />} /> */}
-            {/* <Route path="signup" element={<SignUpPage />} /> */}
+            <Route path="signin" element={<SignInPage />} />
+            <Route path="signup" element={<SignUpPage />} />
         </Route>
 
         {/* ── Admin routes ── */}
@@ -88,7 +91,7 @@ const AppRoutes = () => (
             <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
                 <div className="text-7xl">😿</div>
                 <h1 className="text-3xl font-black text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>404 – Trang không tồn tại</h1>
-                <a href="/" className="btn-pet-primary">🏠 Về trang chủ</a>
+                <Link to="/" className="btn-pet-primary">🏠 Về trang chủ</Link>
             </div>
         } />
     </Routes>

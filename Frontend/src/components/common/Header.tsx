@@ -20,6 +20,8 @@ const Header = () => {
         { label: "Về Chúng Tôi", to: "/about" },
     ];
 
+    const isAdmin = user?.role === "admin" || user?.role === "staff";
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         if (searchQuery.trim()) {
@@ -145,6 +147,18 @@ const Header = () => {
                                             <Link to="/orders" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-[var(--pet-coral)] transition-colors">
                                                 <span>📦</span> Đơn hàng
                                             </Link>
+                                            {isAdmin && (
+                                                <>
+                                                    <hr className="my-1 border-border" />
+                                                    <Link
+                                                        to="/admin"
+                                                        id="header-admin-btn"
+                                                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-violet-50 dark:hover:bg-violet-950/30 hover:text-violet-600 text-violet-500 font-semibold transition-colors"
+                                                    >
+                                                        <span>⚙️</span> Trang Quản Trị
+                                                    </Link>
+                                                </>
+                                            )}
                                             <hr className="my-1 border-border" />
                                             <button
                                                 onClick={() => signOut()}
@@ -223,12 +237,23 @@ const Header = () => {
                             ))}
                             <hr className="my-1 border-border" />
                             {user ? (
-                                <button
-                                    onClick={() => { signOut(); setMobileOpen(false); }}
-                                    className="px-4 py-3 rounded-xl font-semibold text-red-500 hover:bg-red-50 text-left transition-all"
-                                >
-                                    🚪 Đăng xuất
-                                </button>
+                                <>
+                                    {isAdmin && (
+                                        <Link
+                                            to="/admin"
+                                            onClick={() => setMobileOpen(false)}
+                                            className="px-4 py-3 rounded-xl font-semibold text-violet-500 hover:bg-violet-50 text-left transition-all flex items-center gap-2"
+                                        >
+                                            ⚙️ Trang Quản Trị
+                                        </Link>
+                                    )}
+                                    <button
+                                        onClick={() => { signOut(); setMobileOpen(false); }}
+                                        className="px-4 py-3 rounded-xl font-semibold text-red-500 hover:bg-red-50 text-left transition-all"
+                                    >
+                                        🚪 Đăng xuất
+                                    </button>
+                                </>
                             ) : (
                                 <Link
                                     to="/signin"

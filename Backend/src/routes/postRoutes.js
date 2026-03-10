@@ -1,13 +1,15 @@
 import express from 'express';
-/* Lưu ý: Bạn cần tạo file postController.js chứa các hàm này 
-   hoặc comment lại nếu chưa viết xong controller 
-*/
-// import { getPosts, createPost } from '../controllers/postController.js';
-import { protectedRoute } from '../middlewares/authMiddleware.js';
+import { getPosts, getPostBySlug, createPost, deletePost } from '../controllers/postController.js';
+import { protectedRoute, adminRoute } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-// router.route('/').get(getPosts);
-// router.route('/').post(protectedRoute, createPost);
+// Public routes
+router.get('/', getPosts);
+router.get('/:slug', getPostBySlug);
+
+// Protected routes (admin only)
+router.post('/', protectedRoute, adminRoute, createPost);
+router.delete('/:id', protectedRoute, adminRoute, deletePost);
 
 export default router;

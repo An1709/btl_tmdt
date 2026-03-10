@@ -2,8 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { fakeProducts, petCategories } from "@/data/fakeProducts";
 import ProductList from "@/components/features/product/ProductList";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 const HomePage = () => {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "admin" || user?.role === "staff";
   const [activeCategory, setActiveCategory] = useState("all");
   const [email, setEmail] = useState("");
 
@@ -280,6 +283,59 @@ const HomePage = () => {
           <p className="text-xs text-white/30 mt-4">Không spam. Hủy đăng ký bất cứ lúc nào.</p>
         </div>
       </section>
+
+      {/* ================================================================ */}
+      {/*  8. ADMIN QUICK-ACCESS (visible to admin / staff only)            */}
+      {/* ================================================================ */}
+      {isAdmin && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/60 p-8 md:p-10 flex flex-col md:flex-row items-center gap-6 shadow-2xl">
+            {/* Subtle grid overlay */}
+            <div
+              className="absolute inset-0 opacity-[0.04]"
+              style={{
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h32v1H0zM0 0v32h1V0z' fill='%23fff'/%3E%3C/svg%3E\")",
+              }}
+            />
+            {/* Glow accent */}
+            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-violet-600/20 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
+
+            {/* Icon + text */}
+            <div className="relative flex flex-col md:flex-row items-center md:items-start gap-5 flex-1">
+              <div className="text-5xl select-none">🛡️</div>
+              <div className="text-center md:text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">
+                  Khu vực quản trị
+                </p>
+                <h2
+                  className="text-2xl md:text-3xl font-black bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent mb-2"
+                  style={{ fontFamily: "'Nunito', sans-serif" }}
+                >
+                  Trang Quản Trị Admin
+                </h2>
+                <p className="text-slate-400 text-sm">
+                  Bạn đang đăng nhập với tài khoản&nbsp;
+                  <span className="text-violet-300 font-semibold">{user?.username}</span>.
+                  &nbsp;Quay lại bảng điều khiển để quản lý hệ thống.
+                </p>
+              </div>
+            </div>
+
+            {/* CTA button */}
+            <Link
+              to="/admin"
+              id="admin-dashboard-btn"
+              className="relative shrink-0 inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600
+                         hover:from-violet-500 hover:to-indigo-500 text-white font-bold px-7 py-3.5 rounded-2xl
+                         transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-violet-500/30 text-sm"
+            >
+              ⚙️ Vào Trang Quản Trị
+            </Link>
+          </div>
+        </section>
+      )}
 
     </div>
   );

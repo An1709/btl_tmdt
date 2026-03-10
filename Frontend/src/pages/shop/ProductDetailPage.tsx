@@ -1,7 +1,8 @@
-import { useParams, Link } from "react-router";
+import { useParams, Link, useNavigate } from "react-router";
 import { useState } from "react";
 import { fakeProducts } from "@/data/fakeProducts";
 import { useCartStore } from "@/stores/useCartStore";
+import { useAuthStore } from "@/stores/useAuthStore";
 import { formatCurrency } from "@/utils/format";
 import ProductReviews from "@/components/features/product/ProductReviews";
 import { toast } from "sonner";
@@ -10,6 +11,8 @@ const ProductDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const product = fakeProducts.find((p) => p.id === id);
     const addItem = useCartStore((s) => s.addItem);
+    const { user } = useAuthStore();
+    const navigate = useNavigate();
     const [qty, setQty] = useState(1);
     const [added, setAdded] = useState(false);
 
@@ -24,6 +27,11 @@ const ProductDetailPage = () => {
     }
 
     const handleAdd = () => {
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để thêm vào giỏ hàng!");
+            navigate("/signin");
+            return;
+        }
         for (let i = 0; i < qty; i++) addItem(product);
         toast.success(`Đã thêm ${qty} "${product.name}" vào giỏ hàng!`);
         setAdded(true);

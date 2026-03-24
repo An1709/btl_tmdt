@@ -6,8 +6,9 @@ import connectDB from './config/db.js';
 
 // Import các Routes
 import authRoutes from './routes/authRoute.js';
-import userRoutes from './routes/userRoute.js'; 
+import userRoutes from './routes/userRoute.js';
 import productRoutes from './routes/productRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
@@ -16,6 +17,7 @@ import couponRoutes from './routes/couponRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import warrantyRoutes from './routes/warrantyRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+
 
 // Cấu hình
 dotenv.config();
@@ -26,8 +28,8 @@ const app = express();
 // --- Middlewares ---
 // 1. Xử lý CORS (Cho phép Frontend gọi API)
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173', 
-    credentials: true 
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    credentials: true
 }));
 
 // 2. Xử lý JSON body
@@ -47,9 +49,11 @@ app.use('/api/users', userRoutes);
 
 // E-commerce Core
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/coupons', couponRoutes);
+
 
 // Features & Content
 app.use('/api/ai', aiRoutes);

@@ -1,22 +1,65 @@
 import { useParams, Link, useNavigate } from "react-router";
-import { useState } from "react";
-import { fakeProducts } from "@/data/fakeProducts";
+import { useState, useEffect } from "react";
+import { productService } from "@/services/productService";
+import type { Product } from "@/types/product";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { formatCurrency } from "@/utils/format";
 import ProductReviews from "@/components/features/product/ProductReviews";
 import { toast } from "sonner";
 
+// ── Detail page skeleton ──────────────────────────────────────────────────
+const DetailSkeleton = () => (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
+        {/* Breadcrumb */}
+        <div className="flex gap-2 mb-6">
+            {[80, 20, 140].map((w, i) => (
+                <div key={i} className="h-3 bg-muted rounded" style={{ width: `${w}px` }} />
+            ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="bg-muted rounded-3xl aspect-square w-full" />
+            <div className="flex flex-col gap-4">
+                <div className="h-5 bg-muted rounded w-1/4" />
+                <div className="h-9 bg-muted rounded w-3/4" />
+                <div className="h-4 bg-muted rounded w-1/2" />
+                <div className="h-8 bg-muted rounded w-1/3" />
+                <div className="h-20 bg-muted rounded" />
+                <div className="h-12 bg-muted rounded-2xl" />
+            </div>
+        </div>
+    </div>
+);
+
 const ProductDetailPage = () => {
     const { id } = useParams<{ id: string }>();
-    const product = fakeProducts.find((p) => p.id === id);
     const addItem = useCartStore((s) => s.addItem);
     const { user } = useAuthStore();
     const navigate = useNavigate();
+
+    const [product, setProduct] = useState<Product | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
     const [qty, setQty] = useState(1);
     const [added, setAdded] = useState(false);
 
-    if (!product) {
+    useEffect(() => {
+        if (!id) return;
+        let cancelled = false;
+        setLoading(true);
+        setNotFound(false);
+
+        productService.getById(id)
+            .then((p) => { if (!cancelled) setProduct(p); })
+            .catch(() => { if (!cancelled) setNotFound(true); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+
+        return () => { cancelled = true; };
+    }, [id]);
+
+    if (loading) return <DetailSkeleton />;
+
+    if (notFound || !product) {
         return (
             <div className="max-w-7xl mx-auto px-4 py-24 text-center">
                 <div className="text-6xl mb-4">😿</div>

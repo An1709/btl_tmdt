@@ -1,4 +1,5 @@
-import { petCategories } from "@/data/fakeProducts";
+import { useEffect, useState } from "react";
+import { categoryService, type DbCategory } from "@/services/categoryService";
 import type { ProductFilters } from "@/services/productService";
 
 interface ProductFilterProps {
@@ -15,15 +16,26 @@ const SORT_OPTIONS = [
 
 const PRICE_PRESETS = [
     { label: "Tất cả", min: undefined, max: undefined },
-    { label: "< 500K", min: 0, max: 500000 },
-    { label: "500K – 2M", min: 500000, max: 2000000 },
-    { label: "2M – 10M", min: 2000000, max: 10000000 },
-    { label: "> 10M", min: 10000000, max: undefined },
+    { label: "< 500K", min: 0, max: 500_000 },
+    { label: "500K – 2M", min: 500_000, max: 2_000_000 },
+    { label: "2M – 10M", min: 2_000_000, max: 10_000_000 },
+    { label: "> 10M", min: 10_000_000, max: undefined },
 ];
+
+// Placeholder entry for "all categories"
+const ALL_ENTRY: DbCategory = { _id: "", name: "Tất Cả", slug: "" };
 
 const ProductFilter = ({ filters, onChange }: ProductFilterProps) => {
     const set = (partial: Partial<ProductFilters>) =>
         onChange({ ...filters, ...partial, page: 1 });
+
+    const [categories, setCategories] = useState<DbCategory[]>([ALL_ENTRY]);
+
+    useEffect(() => {
+        categoryService.getAll()
+            .then((cats) => setCategories([ALL_ENTRY, ...cats]))
+            .catch(() => {/* silently keep the "Tất Cả" fallback */ });
+    }, []);
 
     return (
         <aside className="w-64 shrink-0">
@@ -32,24 +44,26 @@ const ProductFilter = ({ filters, onChange }: ProductFilterProps) => {
                     🔍 Bộ lọc
                 </h3>
 
-                {/* Category */}
+                {/* Category — loaded from DB */}
                 <div>
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Loại</p>
                     <div className="flex flex-col gap-1">
-                        {petCategories.map((cat) => (
-                            <button
-                                key={cat.id}
-                                onClick={() => set({ category: cat.id === "all" ? undefined : cat.id })}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-left transition-all
-                  ${(filters.category ?? "all") === cat.id
-                                        ? "bg-[var(--pet-coral)] text-white shadow-sm"
-                                        : "text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30"
-                                    }`}
-                            >
-                                <span>{cat.emoji}</span>
-                                {cat.label}
-                            </button>
-                        ))}
+                        {categories.map((cat) => {
+                            const isActive = (filters.category ?? "") === cat.slug;
+                            return (
+                                <button
+                                    key={cat._id || "all"}
+                                    onClick={() => set({ category: cat.slug || undefined })}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-left transition-all
+                                        ${isActive
+                                            ? "bg-[var(--pet-coral)] text-white shadow-sm"
+                                            : "text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30"
+                                        }`}
+                                >
+                                    {cat.name}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -58,13 +72,15 @@ const ProductFilter = ({ filters, onChange }: ProductFilterProps) => {
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Giá</p>
                     <div className="flex flex-col gap-1">
                         {PRICE_PRESETS.map((p) => {
-                            const isActive = (filters.minPrice ?? undefined) === p.min && (filters.maxPrice ?? undefined) === p.max;
+                            const isActive =
+                                (filters.minPrice ?? undefined) === p.min &&
+                                (filters.maxPrice ?? undefined) === p.max;
                             return (
                                 <button
                                     key={p.label}
                                     onClick={() => set({ minPrice: p.min, maxPrice: p.max })}
                                     className={`px-3 py-2 rounded-xl text-sm font-semibold text-left transition-all
-                    ${isActive
+                                        ${isActive
                                             ? "bg-[var(--pet-coral)] text-white shadow-sm"
                                             : "text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30"
                                         }`}
@@ -83,7 +99,7 @@ const ProductFilter = ({ filters, onChange }: ProductFilterProps) => {
                         value={filters.sort ?? "newest"}
                         onChange={(e) => set({ sort: e.target.value as ProductFilters["sort"] })}
                         className="w-full px-3 py-2 rounded-xl border border-border bg-muted/30 text-sm text-foreground
-                       focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 cursor-pointer"
+                                   focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 cursor-pointer"
                     >
                         {SORT_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>

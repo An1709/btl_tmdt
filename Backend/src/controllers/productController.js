@@ -17,10 +17,11 @@ export const getProducts = async (req, res) => {
 
         // Thực thi query
         const products = await features.query;
-        
+
         // Đếm tổng số lượng (để frontend biết bao nhiêu trang)
         // Lưu ý: countDocuments độc lập để đếm chính xác
-        const totalProducts = await Product.countDocuments(features.query._conditions);
+        // Use getFilter() — _conditions is a Mongoose internal not available in v7+
+        const totalProducts = await Product.countDocuments(features.query.getFilter());
 
         res.json({
             products,
@@ -39,11 +40,11 @@ export const getProductById = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id)
             .populate('category', 'name slug'); // Lấy cả tên danh mục
-            
+
         if (product) {
-            // Tăng lượt xem (Có thể dùng Redis để tối ưu, nhưng tạm thời dùng cách này ok)
+            // Tăng lượt xem — fire-and-forget (không block response nếu save lỗi)
             product.views = (product.views || 0) + 1;
-            await product.save({ validateBeforeSave: false }); // Tắt validate để save nhanh hơn
+            product.save({ validateBeforeSave: false }).catch(() => { });
 
             // Gợi ý thêm: Lấy các review của sản phẩm này trả về luôn
             // const reviews = await Review.find({ product: req.params.id }).populate('user', 'fullName avatar');
@@ -88,13 +89,13 @@ export const createProductReview = async (req, res) => {
             // 3. Tính toán lại rating trung bình cho Product
             // Lấy tất cả review của sản phẩm này để tính chính xác nhất
             const reviews = await Review.find({ product: req.params.id });
-            
+
             product.reviewCount = reviews.length;
-            product.averageRating = 
+            product.averageRating =
                 reviews.reduce((acc, item) => item.rating + acc, 0) / reviews.length;
 
             await product.save();
-            
+
             res.status(201).json({ message: 'Đánh giá thành công' });
         } else {
             res.status(404).json({ message: 'Sản phẩm không tồn tại' });
@@ -109,7 +110,7 @@ export const createProductReview = async (req, res) => {
 export const createProduct = async (req, res) => {
     try {
         const { name, price, description, category, stock, images, specifications } = req.body;
-        
+
         // Tự động tạo slug từ tên (VD: "Mèo Anh" -> "meo-anh")
         const slug = name.toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Bỏ dấu tiếng Việt
@@ -117,7 +118,7 @@ export const createProduct = async (req, res) => {
 
         const product = new Product({
             name,
-            slug, 
+            slug,
             price,
             description,
             category,
@@ -152,7 +153,7 @@ export const updateProduct = async (req, res) => {
 
             // Nếu đổi tên thì update lại slug
             if (name) {
-                 product.slug = name.toLowerCase()
+                product.slug = name.toLowerCase()
                     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                     .replace(/ /g, '-');
             }

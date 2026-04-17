@@ -1,13 +1,13 @@
+// Matches the backend Coupon model exactly
 export interface Coupon {
     _id: string;
     code: string;
-    discountType: "percentage" | "fixed";
-    discountValue: number;
+    discountType: "percent" | "fixed";
+    value: number;             // backend field name is 'value'
     minOrderValue: number;
-    maxDiscount?: number;
-    expiresAt: string;
-    isActive: boolean;
+    expirationDate: string;    // backend field name is 'expirationDate'
     usageLimit: number;
     usedCount: number;
     createdAt: string;
+    updatedAt: string;
 }

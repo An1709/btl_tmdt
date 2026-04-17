@@ -6,31 +6,31 @@ const productSchema = new mongoose.Schema({
     description: { type: String, required: true },
     price: { type: Number, required: true },
     originalPrice: { type: Number },
-    
+
     images: [{ type: String }],
-    
-    category: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Category', 
-        required: true 
+
+    category: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category',
+        required: true
     },
-    
+
     // Thông số kỹ thuật (Dành cho Pet shop)
     // VD: { "weight": "2kg", "age": "kitten", "origin": "UK" }
     specifications: {
         type: Map,
-        of: String 
+        of: String
     },
 
     stock: { type: Number, required: true, default: 0 },
     sold: { type: Number, default: 0 },
     views: { type: Number, default: 0 },
-    
+
     // Hai trường này mình giữ lại để query nhanh, không cần tính toán lại mỗi lần
     averageRating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 }
 
-}, { 
+}, {
     timestamps: true,
     // CẤU HÌNH QUAN TRỌNG ĐỂ VIRTUALS HOẠT ĐỘNG
     toJSON: { virtuals: true },
@@ -38,7 +38,7 @@ const productSchema = new mongoose.Schema({
 });
 
 // --- 1. MIDDLEWARE TẠO SLUG TỰ ĐỘNG (HỖ TRỢ TIẾNG VIỆT) ---
-productSchema.pre('save', function(next) {
+productSchema.pre('save', async function () {
     if (this.isModified('name')) {
         // Chuyển tiếng Việt có dấu thành không dấu
         // VD: "Thức ăn cho Mèo" -> "thuc-an-cho-meo"
@@ -51,7 +51,7 @@ productSchema.pre('save', function(next) {
             .trim()
             .replace(/\s+/g, '-'); // Thay khoảng trắng bằng dấu gạch ngang
     }
-    next();
+    // No next() needed — async pre hooks in Mongoose resolve automatically
 });
 
 // --- 2. VIRTUAL POPULATE REVIEWS ---

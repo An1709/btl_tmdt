@@ -48,9 +48,9 @@ const OrderHistoryPage = () => {
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm text-muted-foreground">{order.items.length} sản phẩm</p>
+                                    <p className="text-sm text-muted-foreground">{order.orderItems.length} sản phẩm</p>
                                     <div className="flex items-center gap-4">
-                                        <p className="font-bold text-[var(--pet-coral)]">{formatCurrency(order.total)}</p>
+                                        <p className="font-bold text-[var(--pet-coral)]">{formatCurrency(order.totalPrice)}</p>
                                         <Link to={`/orders/${order._id}`} className="text-sm text-[var(--pet-coral)] hover:underline font-semibold">Xem chi tiết →</Link>
                                     </div>
                                 </div>

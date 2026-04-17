@@ -42,9 +42,9 @@ const OrderManagePage = () => {
 
     const columns: Column<Order>[] = [
         { key: "id", header: "Mã đơn", render: (o) => <span className="font-mono text-xs font-semibold">#{o._id.slice(-8).toUpperCase()}</span> },
-        { key: "customer", header: "Khách hàng", render: (o) => <span className="text-foreground">{o.shippingAddress.fullName}</span> },
+        { key: "customer", header: "Khách hàng", render: (o) => <span className="text-foreground">{o.shippingAddress.phone}</span> },
         { key: "date", header: "Ngày", render: (o) => formatDate(o.createdAt) },
-        { key: "total", header: "Tổng tiền", render: (o) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(o.total)}</span> },
+        { key: "total", header: "Tổng tiền", render: (o) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(o.totalPrice)}</span> },
         {
             key: "status", header: "Trạng thái", render: (o) => (
                 <select

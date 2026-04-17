@@ -22,30 +22,25 @@ const CouponManagePage = () => {
         } catch { toast.error("Không thể xóa."); }
     };
 
-    const handleToggle = async (c: Coupon) => {
-        try {
-            await couponService.updateCoupon(c._id, { isActive: !c.isActive });
-            setCoupons((prev) => prev.map((x) => x._id === c._id ? { ...x, isActive: !x.isActive } : x));
-            toast.success(c.isActive ? "Đã tắt mã." : "Đã bật mã.");
-        } catch { toast.error("Không thể cập nhật."); }
-    };
+
+
 
     const columns: Column<Coupon>[] = [
         { key: "code", header: "Mã", render: (c) => <span className="font-mono font-bold text-foreground">{c.code}</span> },
         {
             key: "discount", header: "Giảm giá", render: (c) => (
                 <span className="font-bold text-[var(--pet-coral)]">
-                    {c.discountType === "percentage" ? `${c.discountValue}%` : formatCurrency(c.discountValue)}
+                    {c.discountType === "percent" ? `${c.value}%` : formatCurrency(c.value)}
                 </span>
             )
         },
         { key: "min", header: "Đơn tối thiểu", render: (c) => formatCurrency(c.minOrderValue) },
         { key: "used", header: "Đã dùng", render: (c) => `${c.usedCount}/${c.usageLimit}` },
-        { key: "expires", header: "Hết hạn", render: (c) => formatDate(c.expiresAt) },
+        { key: "expires", header: "Hết hạn", render: (c) => formatDate(c.expirationDate) },
         {
             key: "status", header: "Trạng thái", render: (c) => (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full cursor-pointer transition-all ${c.isActive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`} onClick={() => handleToggle(c)}>
-                    {c.isActive ? "Đang dùng" : "Tắt"}
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.usageLimit > 0 && c.usedCount < c.usageLimit ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                    {c.usageLimit > 0 && c.usedCount < c.usageLimit ? "Còn lượt" : "Hết lượt"}
                 </span>
             )
         },

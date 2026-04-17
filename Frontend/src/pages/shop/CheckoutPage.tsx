@@ -3,10 +3,9 @@ import { useNavigate } from "react-router";
 import { useCartStore } from "@/stores/useCartStore";
 import { orderService } from "@/services/orderService";
 import { couponService } from "@/services/couponService";
-import { paymentService } from "@/services/paymentService";
 import { formatCurrency } from "@/utils/format";
 import { toast } from "sonner";
-import type { ShippingAddress, PaymentMethod } from "@/types/order";
+import type { PaymentMethod } from "@/types/order";
 
 const CheckoutPage = () => {
     const navigate = useNavigate();
@@ -15,9 +14,14 @@ const CheckoutPage = () => {
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
     const [couponCode, setCouponCode] = useState("");
     const [discount, setDiscount] = useState(0);
+    const [couponId, setCouponId] = useState<string | undefined>(undefined);
     const [checkingCoupon, setCheckingCoupon] = useState(false);
-    const [address, setAddress] = useState<ShippingAddress>({
-        fullName: "", phone: "", address: "", city: "", district: "",
+    const [address, setAddress] = useState({
+        fullName: "",
+        phone: "",
+        address: "",
+        city: "",
+        district: "",
     });
 
     const subtotal = totalPrice();
@@ -30,10 +34,12 @@ const CheckoutPage = () => {
         try {
             const result = await couponService.checkCoupon(couponCode.trim(), subtotal);
             setDiscount(result.discountAmount);
+            setCouponId(result.couponId);
             toast.success(`🎉 Áp dụng mã thành công! Giảm ${formatCurrency(result.discountAmount)}`);
         } catch {
             toast.error("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
             setDiscount(0);
+            setCouponId(undefined);
         } finally {
             setCheckingCoupon(false);
         }
@@ -44,29 +50,48 @@ const CheckoutPage = () => {
             toast.error("Vui lòng điền đầy đủ thông tin giao hàng.");
             return;
         }
+        if (items.length === 0) {
+            toast.error("Giỏ hàng trống.");
+            return;
+        }
         setLoading(true);
         try {
             const order = await orderService.createOrder({
-                items: items.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
-                shippingAddress: address,
+                orderItems: items.map((i) => ({
+                    product: i.product.id,
+                    name: i.product.name,
+                    qty: i.quantity,
+                    price: i.product.price,
+                    image: i.product.image,
+                })),
+                shippingAddress: {
+                    address: address.address,
+                    city: address.city,
+                    phone: address.phone,
+                },
                 paymentMethod,
-                couponCode: couponCode || undefined,
+                itemsPrice: subtotal,
+                shippingPrice: shippingFee,
+                totalPrice: total,
+                discountAmount: discount,
+                ...(couponId && { coupon: couponId }),
             });
 
-            if (paymentMethod === "vnpay") {
-                const payUrl = await paymentService.createVNPayUrl({
-                    orderId: order._id,
-                    amount: order.total,
-                });
+            // Backend returns paymentUrl in the response for VNPay orders
+            if (paymentMethod === "vnpay" && order.paymentUrl) {
                 clearCart();
-                window.location.href = payUrl;
+                window.location.href = order.paymentUrl;
             } else {
                 clearCart();
                 toast.success("Đặt hàng thành công! 🎉");
                 navigate(`/orders/${order._id}`);
             }
-        } catch {
-            toast.error("Không thể đặt hàng. Vui lòng thử lại.");
+        } catch (err: unknown) {
+            const message =
+                err && typeof err === "object" && "response" in err
+                    ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(message ?? "Không thể đặt hàng. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }
@@ -97,7 +122,7 @@ const CheckoutPage = () => {
                     <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
                         <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>💰 Phương thức thanh toán</h2>
                         <div className="flex flex-col gap-3">
-                            {([["vnpay", "💳 VNPAY", "Thanh toán qua cổng VNPAY"], ["cod", "💵 COD", "Thanh toán khi nhận hàng"]] as const).map(([value, label, desc]) => (
+                            {(([["vnpay", "💳 VNPAY", "Thanh toán qua cổng VNPAY"], ["cod", "💵 COD", "Thanh toán khi nhận hàng"]] as const)).map(([value, label, desc]) => (
                                 <label key={value} className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === value ? "border-[var(--pet-coral)] bg-red-50 dark:bg-red-950/20" : "border-border hover:border-muted-foreground/40"}`}>
                                     <input type="radio" name="payment" value={value} checked={paymentMethod === value} onChange={() => setPaymentMethod(value)} className="accent-[var(--pet-coral)]" />
                                     <div>

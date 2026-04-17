@@ -1,37 +1,38 @@
-export type OrderStatus = "pending" | "confirmed" | "shipping" | "delivered" | "cancelled";
+export type OrderStatus = "Pending" | "Processing" | "Shipping" | "Delivered" | "Cancelled";
 export type PaymentMethod = "vnpay" | "cod";
-export type PaymentStatus = "unpaid" | "paid" | "refunded";
 
 export interface OrderItem {
-    productId: string;
-    productName: string;
-    productImage: string;
-    quantity: number;
+    product: string;
+    name: string;
+    qty: number;
     price: number;
+    image?: string;
 }
 
 export interface ShippingAddress {
-    fullName: string;
-    phone: string;
+    fullName?: string;  // stored by frontend only, not in backend model
     address: string;
     city: string;
-    district: string;
+    phone: string;
+    district?: string;  // frontend extra field
 }
 
 export interface Order {
     _id: string;
-    userId: string;
-    items: OrderItem[];
+    user: string;
+    orderItems: OrderItem[];
     shippingAddress: ShippingAddress;
-    subtotal: number;
-    discount: number;
-    shippingFee: number;
-    total: number;
-    couponCode?: string;
     paymentMethod: PaymentMethod;
-    paymentStatus: PaymentStatus;
+    itemsPrice: number;
+    shippingPrice: number;
+    discountAmount: number;
+    totalPrice: number;
+    isPaid: boolean;
+    paidAt?: string;
+    isDelivered: boolean;
+    deliveredAt?: string;
     status: OrderStatus;
-    note?: string;
+    coupon?: string;
     createdAt: string;
     updatedAt: string;
 }

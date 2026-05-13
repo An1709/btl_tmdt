@@ -6,20 +6,34 @@ import { formatCurrency, formatDate } from "@/utils/format";
 import { ORDER_STATUS_LABELS } from "@/utils/constants";
 import { toast } from "sonner";
 
-const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-amber-100 text-amber-700",
-    confirmed: "bg-blue-100 text-blue-700",
-    shipping: "bg-indigo-100 text-indigo-700",
-    delivered: "bg-emerald-100 text-emerald-700",
-    cancelled: "bg-red-100 text-red-600",
+const STATUS_COLORS: Record<OrderStatus, string> = {
+    Pending: "bg-amber-100 text-amber-700",
+    Processing: "bg-blue-100 text-blue-700",
+    Shipping: "bg-indigo-100 text-indigo-700",
+    Delivered: "bg-emerald-100 text-emerald-700",
+    Cancelled: "bg-red-100 text-red-600",
+};
+
+const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+    Pending: "Processing",
+    Processing: "Shipping",
+    Shipping: "Delivered",
+};
+
+const NEXT_STATUS_ACTION: Partial<Record<OrderStatus, string>> = {
+    Pending: "Xác nhận đơn",
+    Processing: "Chuyển sang đang giao",
+    Shipping: "Hoàn tất giao hàng",
 };
 
 const OrderManagePage = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("all");
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
 
     const load = () => {
+        setLoading(true);
         orderService.getAllOrders()
             .then((res) => setOrders(res.orders))
             .catch(console.error)
@@ -28,13 +42,23 @@ const OrderManagePage = () => {
 
     useEffect(load, []);
 
-    const handleStatus = async (id: string, status: OrderStatus) => {
+    const handleNextStatus = async (order: Order) => {
+        const nextStatus = NEXT_STATUS[order.status];
+        if (!nextStatus) return;
+
         try {
-            await orderService.updateStatus(id, status);
-            setOrders((prev) => prev.map((o) => o._id === id ? { ...o, status } : o));
+            setUpdatingId(order._id);
+            const updatedOrder = await orderService.updateStatus(order._id, nextStatus);
+            setOrders((prev) => prev.map((o) => o._id === order._id ? updatedOrder : o));
             toast.success("Cập nhật trạng thái thành công!");
-        } catch {
-            toast.error("Không thể cập nhật. Vui lòng thử lại.");
+        } catch (err: unknown) {
+            const message =
+                err && typeof err === "object" && "response" in err
+                    ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(message ?? "Không thể cập nhật. Vui lòng thử lại.");
+        } finally {
+            setUpdatingId(null);
         }
     };
 
@@ -47,13 +71,9 @@ const OrderManagePage = () => {
         { key: "total", header: "Tổng tiền", render: (o) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(o.totalPrice)}</span> },
         {
             key: "status", header: "Trạng thái", render: (o) => (
-                <select
-                    value={o.status}
-                    onChange={(e) => handleStatus(o._id, e.target.value as OrderStatus)}
-                    className={`text-xs font-bold px-2 py-1 rounded-lg border-0 cursor-pointer ${STATUS_COLORS[o.status]}`}
-                >
-                    {Object.entries(ORDER_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${STATUS_COLORS[o.status]}`}>
+                    {ORDER_STATUS_LABELS[o.status] ?? o.status}
+                </span>
             )
         },
     ];
@@ -68,7 +88,31 @@ const OrderManagePage = () => {
                     {Object.entries(ORDER_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
             </div>
-            <DataTable columns={columns} data={filtered} keyExtractor={(o) => o._id} isLoading={loading} emptyText="Không có đơn hàng nào." />
+            <DataTable
+                columns={columns}
+                data={filtered}
+                keyExtractor={(o) => o._id}
+                isLoading={loading}
+                emptyText="Không có đơn hàng nào."
+                actions={(o) => {
+                    const nextStatus = NEXT_STATUS[o.status];
+                    const actionLabel = NEXT_STATUS_ACTION[o.status];
+
+                    if (!nextStatus || !actionLabel) {
+                        return <span className="text-xs text-muted-foreground">Không còn bước tiếp theo</span>;
+                    }
+
+                    return (
+                        <button
+                            onClick={() => handleNextStatus(o)}
+                            disabled={updatingId === o._id}
+                            className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold disabled:opacity-50"
+                        >
+                            {updatingId === o._id ? "Đang cập nhật..." : actionLabel}
+                        </button>
+                    );
+                }}
+            />
         </div>
     );
 };

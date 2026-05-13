@@ -32,11 +32,11 @@ export const ROUTES = {
 } as const;
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-    pending: "Chờ xác nhận",
-    confirmed: "Đã xác nhận",
-    shipping: "Đang giao hàng",
-    delivered: "Đã giao",
-    cancelled: "Đã hủy",
+    Pending: "Chờ xác nhận",
+    Processing: "Đang xử lý",
+    Shipping: "Đang giao",
+    Delivered: "Đã giao",
+    Cancelled: "Đã hủy",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {

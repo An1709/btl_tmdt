@@ -9,12 +9,29 @@ export interface Product {
     price: number;
     originalPrice?: number;
     image: string;
+    images?: string[];
     category: ProductCategory;
+    categoryId?: string;
     rating: number;
     reviewCount: number;
     badge?: ProductBadge;
     description: string;
     inStock: boolean;
+    stock?: number;
+    reviews?: ProductReview[];
+}
+
+export interface ProductReview {
+    _id: string;
+    user: {
+        _id: string;
+        displayName?: string;
+        username?: string;
+        avatarUrl?: string;
+    };
+    rating: number;
+    comment: string;
+    createdAt: string;
 }
 
 export interface CartItem {

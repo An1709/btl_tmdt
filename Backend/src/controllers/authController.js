@@ -59,6 +59,12 @@ export const signIn = async (req, res) => {
                 .json({ message: 'Invalid username or password' });
         }
 
+        if (user.isBlocked) {
+            return res
+                .status(403)
+                .json({ message: 'Tai khoan da bi khoa' });
+        }
+
         //so sánh password
         const passwordCorrect = await bcrypt.compare(password, user.hashedPassword);
         if (!passwordCorrect) {
@@ -142,6 +148,13 @@ export const refreshToken = async (req, res) => {
             await Session.deleteOne({ refreshToken: refreshToken });
             res.clearCookie('refreshToken');
             return res.status(403).json({ message: 'Refresh token expired' });
+        }
+
+        const user = await User.findById(session.userId).select('_id isBlocked');
+        if (!user || user.isBlocked) {
+            await Session.deleteOne({ refreshToken: refreshToken });
+            res.clearCookie('refreshToken');
+            return res.status(403).json({ message: 'Tai khoan khong hop le hoac da bi khoa' });
         }
 
         //tạo access token mới

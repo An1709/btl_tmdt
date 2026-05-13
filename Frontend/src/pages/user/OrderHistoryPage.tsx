@@ -2,17 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import Sidebar from "@/components/common/Sidebar";
 import { orderService } from "@/services/orderService";
-import type { Order } from "@/types/order";
+import type { Order, OrderStatus } from "@/types/order";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { ORDER_STATUS_LABELS } from "@/utils/constants";
 import Loading from "@/components/common/Loading";
 
-const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-amber-100 text-amber-700",
-    confirmed: "bg-blue-100 text-blue-700",
-    shipping: "bg-indigo-100 text-indigo-700",
-    delivered: "bg-emerald-100 text-emerald-700",
-    cancelled: "bg-red-100 text-red-600",
+const STATUS_COLORS: Record<OrderStatus, string> = {
+    Pending: "bg-amber-100 text-amber-700",
+    Processing: "bg-blue-100 text-blue-700",
+    Shipping: "bg-indigo-100 text-indigo-700",
+    Delivered: "bg-emerald-100 text-emerald-700",
+    Cancelled: "bg-red-100 text-red-600",
 };
 
 const OrderHistoryPage = () => {
@@ -44,7 +44,7 @@ const OrderHistoryPage = () => {
                                         <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
                                     </div>
                                     <span className={`text-xs font-bold px-3 py-1 rounded-full ${STATUS_COLORS[order.status]}`}>
-                                        {ORDER_STATUS_LABELS[order.status]}
+                                        {ORDER_STATUS_LABELS[order.status] ?? order.status}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between">

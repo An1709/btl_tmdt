@@ -31,6 +31,7 @@ const DashboardPage = lazy(() => import("@/pages/admin/DashboardPage"));
 const OrderManagePage = lazy(() => import("@/pages/admin/OrderManagePage"));
 const UserManagePage = lazy(() => import("@/pages/admin/UserManagePage"));
 const ProductManagePage = lazy(() => import("@/pages/admin/ProductManagePage"));
+const BlogManagePage = lazy(() => import("@/pages/admin/BlogManagePage"));
 const CouponManagePage = lazy(() => import("@/pages/admin/CouponManagePage"));
 const ReviewManagePage = lazy(() => import("@/pages/admin/ReviewManagePage"));
 const WarrantyManagePage = lazy(() => import("@/pages/admin/WarrantyManagePage"));
@@ -80,6 +81,7 @@ const AppRoutes = () => (
                 <Route path="admin/orders" element={<SuspenseWrap><OrderManagePage /></SuspenseWrap>} />
                 <Route path="admin/users" element={<SuspenseWrap><UserManagePage /></SuspenseWrap>} />
                 <Route path="admin/products" element={<SuspenseWrap><ProductManagePage /></SuspenseWrap>} />
+                <Route path="admin/blogs" element={<SuspenseWrap><BlogManagePage /></SuspenseWrap>} />
                 <Route path="admin/coupons" element={<SuspenseWrap><CouponManagePage /></SuspenseWrap>} />
                 <Route path="admin/reviews" element={<SuspenseWrap><ReviewManagePage /></SuspenseWrap>} />
                 <Route path="admin/warranty" element={<SuspenseWrap><WarrantyManagePage /></SuspenseWrap>} />

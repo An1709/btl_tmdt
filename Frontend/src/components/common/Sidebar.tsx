@@ -8,6 +8,7 @@ interface SidebarProps {
 const adminLinks = [
     { to: "/admin", label: "Tổng quan", emoji: "📊", end: true },
     { to: "/admin/products", label: "Sản phẩm", emoji: "🐾" },
+    { to: "/admin/blogs", label: "Bài viết", emoji: "📝" },
     { to: "/admin/orders", label: "Đơn hàng", emoji: "📦" },
     { to: "/admin/users", label: "Người dùng", emoji: "👥" },
     { to: "/admin/coupons", label: "Mã giảm giá", emoji: "🎟️" },

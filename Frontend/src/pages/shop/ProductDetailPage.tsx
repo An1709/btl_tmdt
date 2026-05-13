@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { productService } from "@/services/productService";
 import type { Product } from "@/types/product";
 import { useCartStore } from "@/stores/useCartStore";
@@ -43,16 +43,31 @@ const ProductDetailPage = () => {
     const [qty, setQty] = useState(1);
     const [added, setAdded] = useState(false);
 
-    useEffect(() => {
-        if (!id) return;
-        let cancelled = false;
+    const loadProduct = useCallback(() => {
+        if (!id) return Promise.resolve();
         setLoading(true);
         setNotFound(false);
 
-        productService.getById(id)
-            .then((p) => { if (!cancelled) setProduct(p); })
-            .catch(() => { if (!cancelled) setNotFound(true); })
-            .finally(() => { if (!cancelled) setLoading(false); });
+        return productService.getById(id)
+            .then((p) => setProduct(p))
+            .catch(() => setNotFound(true))
+            .finally(() => setLoading(false));
+    }, [id]);
+
+    useEffect(() => {
+        if (!id) return;
+        let cancelled = false;
+
+        void Promise.resolve().then(() => {
+            if (cancelled) return;
+            setLoading(true);
+            setNotFound(false);
+
+            productService.getById(id)
+                .then((p) => { if (!cancelled) setProduct(p); })
+                .catch(() => { if (!cancelled) setNotFound(true); })
+                .finally(() => { if (!cancelled) setLoading(false); });
+        });
 
         return () => { cancelled = true; };
     }, [id]);
@@ -186,7 +201,12 @@ const ProductDetailPage = () => {
             </div>
 
             {/* Reviews */}
-            <ProductReviews productId={product.id} />
+            <ProductReviews
+                productId={product.id}
+                reviews={product.reviews}
+                averageRating={product.rating}
+                onReviewAdded={() => { void loadProduct(); }}
+            />
         </div>
     );
 };

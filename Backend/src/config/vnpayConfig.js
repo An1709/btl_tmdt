@@ -7,6 +7,7 @@ const vnpayConfig = {
     vnp_HashSecret: process.env.VNP_HASH_SECRET, // Chuỗi bí mật để tạo chữ ký
     vnp_Url: process.env.VNP_URL, // Đường dẫn thanh toán (Sandbox hoặc thật)
     vnp_ReturnUrl: process.env.VNP_RETURN_URL, // Đường dẫn VNPAY sẽ gọi về khi thanh toán xong
+    vnp_IpnUrl: process.env.VNP_IPN_URL, // Đường dẫn IPN để VNPAY gửi kết quả giao dịch
     vnp_Api: process.env.VNP_API // API truy vấn giao dịch (tùy chọn)
 };
 

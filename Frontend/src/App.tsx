@@ -5,8 +5,16 @@ import ChatWidget from "@/components/features/ai/ChatWidget";
 import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
 import AuthLayout from "./layouts/AuthLayout";
+import { useEffect } from "react";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 function App() {
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
+
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
   return (
     <>
       <Toaster position="top-right" richColors expand />

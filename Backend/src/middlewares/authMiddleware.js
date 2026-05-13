@@ -25,11 +25,15 @@ export const protectedRoute = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
         // Tìm user từ decoded.userId (khớp với payload khi bạn tạo token)
-        // .select('-hashPassword'): Loại bỏ trường mật khẩu khỏi kết quả trả về
-        const user = await User.findById(decoded.userId).select('-hashPassword');
+        // .select('-hashedPassword'): Loại bỏ trường mật khẩu khỏi kết quả trả về
+        const user = await User.findById(decoded.userId).select('-hashedPassword');
 
         if (!user) {
             return res.status(404).json({ message: 'Không tìm thấy người dùng này' });
+        }
+
+        if (user.isBlocked) {
+            return res.status(403).json({ message: 'Tai khoan da bi khoa' });
         }
 
         // Gán user vào req để các route phía sau sử dụng

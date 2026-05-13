@@ -10,6 +10,51 @@ const makeSlug = (str) =>
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-');
 
+const normalizeTags = (tags) => {
+    if (Array.isArray(tags)) {
+        return tags.map((tag) => String(tag).trim()).filter(Boolean);
+    }
+
+    if (typeof tags === 'string') {
+        return tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+    }
+
+    return [];
+};
+
+const buildExcerpt = (content) => content.replace(/<[^>]+>/g, '').slice(0, 160);
+
+const mapPost = (post, fallbackImage) => ({
+    _id: post._id,
+    title: post.title,
+    slug: post.slug,
+    excerpt: post.excerpt || `${buildExcerpt(post.content)}...`,
+    content: post.content,
+    coverImage: post.thumbnail || fallbackImage,
+    author: post.author,
+    tags: post.tags || [],
+    comments: [],
+    viewCount: post.views || 0,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+});
+
+const validatePostPayload = ({ title, content, type, thumbnail }) => {
+    if (!title?.trim() || !content?.trim()) {
+        return 'Tieu de va noi dung la bat buoc';
+    }
+
+    if (type && !['blog', 'forum_topic'].includes(type)) {
+        return 'Loai bai viet khong hop le';
+    }
+
+    if (thumbnail && typeof thumbnail !== 'string') {
+        return 'Anh bai viet khong hop le';
+    }
+
+    return null;
+};
+
 // @desc    Lấy danh sách bài viết (có phân trang + tìm kiếm)
 // @route   GET /api/posts
 // @access  Public
@@ -39,20 +84,7 @@ export const getPosts = async (req, res) => {
         ]);
 
         // Map to shape expected by frontend
-        const mapped = posts.map((p) => ({
-            _id: p._id,
-            title: p.title,
-            slug: p.slug,
-            excerpt: p.excerpt || p.content.replace(/<[^>]+>/g, '').slice(0, 160) + '...',
-            content: p.content,
-            coverImage: p.thumbnail || `https://images.unsplash.com/photo-${p._id}?w=800&h=450&fit=crop`,
-            author: p.author,
-            tags: p.tags,
-            comments: [],
-            viewCount: p.views || 0,
-            createdAt: p.createdAt,
-            updatedAt: p.updatedAt,
-        }));
+        const mapped = posts.map((p) => mapPost(p, `https://images.unsplash.com/photo-${p._id}?w=800&h=450&fit=crop`));
 
         const totalPages = Math.ceil(total / limit);
         return res.json({
@@ -82,18 +114,8 @@ export const getPostBySlug = async (req, res) => {
         return res.json({
             success: true,
             data: {
-                _id: post._id,
-                title: post.title,
-                slug: post.slug,
-                excerpt: post.excerpt || post.content.replace(/<[^>]+>/g, '').slice(0, 160) + '...',
-                content: post.content,
-                coverImage: post.thumbnail || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800&h=450&fit=crop',
-                author: post.author,
-                tags: post.tags,
-                comments: [],
+                ...mapPost(post, 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800&h=450&fit=crop'),
                 viewCount: (post.views || 0) + 1,
-                createdAt: post.createdAt,
-                updatedAt: post.updatedAt,
             },
         });
     } catch (err) {
@@ -108,27 +130,77 @@ export const getPostBySlug = async (req, res) => {
 export const createPost = async (req, res) => {
     try {
         const { title, content, tags, type, excerpt } = req.body;
-        if (!title || !content) {
-            return res.status(400).json({ success: false, message: 'Tiêu đề và nội dung là bắt buộc' });
+        const validationError = validatePostPayload(req.body);
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
         }
 
-        const slug = makeSlug(title) + '-' + Date.now();
+        const slug = `${makeSlug(title)}-${Date.now()}`;
 
         const post = await Post.create({
-            title,
+            title: title.trim(),
             slug,
-            content,
-            excerpt: excerpt || content.replace(/<[^>]+>/g, '').slice(0, 160),
+            content: content.trim(),
+            excerpt: excerpt?.trim() || buildExcerpt(content),
             author: req.user._id,
-            tags: tags || [],
+            tags: normalizeTags(tags),
             type: type || 'blog',
-            thumbnail: req.body.thumbnail || req.file?.path || '',
+            thumbnail: req.body.thumbnail?.trim() || req.file?.path || '',
         });
 
-        return res.status(201).json({ success: true, data: post });
+        const populatedPost = await Post.findById(post._id)
+            .populate('author', 'username displayName avatarUrl')
+            .lean();
+
+        return res.status(201).json({
+            success: true,
+            data: mapPost(populatedPost, ''),
+        });
     } catch (err) {
         console.error('Error in createPost:', err);
         res.status(500).json({ success: false, message: 'Lỗi server khi tạo bài viết' });
+    }
+};
+
+// @desc    Cap nhat bai viet
+// @route   PUT /api/posts/:id
+// @access  Private (Admin)
+export const updatePost = async (req, res) => {
+    try {
+        const { title, content, tags, type, excerpt } = req.body;
+        const validationError = validatePostPayload(req.body);
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
+        }
+
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ success: false, message: 'Bai viet khong ton tai' });
+
+        const nextTitle = title.trim();
+        if (nextTitle !== post.title) {
+            post.slug = `${makeSlug(nextTitle)}-${Date.now()}`;
+        }
+
+        post.title = nextTitle;
+        post.content = content.trim();
+        post.excerpt = excerpt?.trim() || buildExcerpt(content);
+        post.tags = normalizeTags(tags);
+        post.type = type || 'blog';
+        post.thumbnail = req.body.thumbnail?.trim() || req.file?.path || '';
+
+        await post.save();
+
+        const populatedPost = await Post.findById(post._id)
+            .populate('author', 'username displayName avatarUrl')
+            .lean();
+
+        return res.json({
+            success: true,
+            data: mapPost(populatedPost, ''),
+        });
+    } catch (err) {
+        console.error('Error in updatePost:', err);
+        res.status(500).json({ success: false, message: 'Loi server khi cap nhat bai viet' });
     }
 };
 

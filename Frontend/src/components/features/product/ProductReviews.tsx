@@ -1,20 +1,13 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { productService } from "@/services/productService";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
 import { Link } from "react-router";
-
-interface Review {
-    _id: string;
-    userId: { displayName: string; avatarUrl?: string };
-    rating: number;
-    comment: string;
-    createdAt: string;
-}
+import type { ProductReview } from "@/types/product";
 
 interface ProductReviewsProps {
     productId: string;
-    reviews?: Review[];
+    reviews?: ProductReview[];
     averageRating?: number;
     onReviewAdded?: () => void;
 }
@@ -31,12 +24,21 @@ const StarPicker = ({ rating, onChange }: { rating: number; onChange: (r: number
                     onMouseLeave={() => setHover(0)}
                     onClick={() => onChange(s)}
                     className="text-2xl transition-transform hover:scale-110"
+                    aria-label={`${s} sao`}
                 >
                     {s <= (hover || rating) ? "⭐" : "☆"}
                 </button>
             ))}
         </div>
     );
+};
+
+const getErrorMessage = (err: unknown, fallback: string) => {
+    if (err && typeof err === "object" && "response" in err) {
+        return (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? fallback;
+    }
+
+    return fallback;
 };
 
 const ProductReviews = ({
@@ -50,9 +52,19 @@ const ProductReviews = ({
     const [comment, setComment] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (!comment.trim()) return;
+
+        if (rating < 1 || rating > 5) {
+            toast.error("Vui lòng chọn số sao từ 1 đến 5.");
+            return;
+        }
+
+        if (!comment.trim()) {
+            toast.error("Vui lòng nhập nội dung đánh giá.");
+            return;
+        }
+
         setSubmitting(true);
         try {
             await productService.submitReview(productId, { rating, comment: comment.trim() });
@@ -60,14 +72,13 @@ const ProductReviews = ({
             setComment("");
             setRating(5);
             onReviewAdded?.();
-        } catch {
-            toast.error("Không thể gửi đánh giá. Vui lòng thử lại.");
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, "Không thể gửi đánh giá. Vui lòng thử lại."));
         } finally {
             setSubmitting(false);
         }
     };
 
-    // Rating breakdown
     const breakdown = [5, 4, 3, 2, 1].map((star) => ({
         star,
         count: reviews.filter((r) => r.rating === star).length,
@@ -78,7 +89,6 @@ const ProductReviews = ({
         <section className="mt-12">
             <h2 className="section-title mb-6">⭐ Đánh giá ({reviews.length})</h2>
 
-            {/* Summary */}
             {reviews.length > 0 && (
                 <div className="flex gap-8 p-5 bg-white dark:bg-card rounded-2xl border border-border mb-8">
                     <div className="text-center">
@@ -106,29 +116,31 @@ const ProductReviews = ({
                 </div>
             )}
 
-            {/* Reviews list */}
             <div className="flex flex-col gap-4 mb-8">
-                {reviews.map((r) => (
-                    <div key={r._id} className="p-4 bg-white dark:bg-card rounded-2xl border border-border">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] flex items-center justify-center text-white text-sm font-bold">
-                                {r.userId.displayName?.[0]}
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-foreground">{r.userId.displayName}</p>
-                                <div className="flex">
-                                    {[1, 2, 3, 4, 5].map((s) => (
-                                        <span key={s} className="text-xs">{s <= r.rating ? "⭐" : ""}</span>
-                                    ))}
+                {reviews.map((r) => {
+                    const reviewerName = r.user?.displayName || r.user?.username || "Người dùng";
+
+                    return (
+                        <div key={r._id} className="p-4 bg-white dark:bg-card rounded-2xl border border-border">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] flex items-center justify-center text-white text-sm font-bold">
+                                    {reviewerName[0]}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-foreground">{reviewerName}</p>
+                                    <div className="flex">
+                                        {[1, 2, 3, 4, 5].map((s) => (
+                                            <span key={s} className="text-xs">{s <= r.rating ? "⭐" : ""}</span>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
+                            <p className="text-sm text-foreground leading-relaxed">{r.comment}</p>
                         </div>
-                        <p className="text-sm text-foreground leading-relaxed">{r.comment}</p>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
-            {/* Write review */}
             {user ? (
                 <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
                     <h3 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>Viết đánh giá của bạn</h3>
@@ -142,9 +154,7 @@ const ProductReviews = ({
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..."
                             rows={3}
-                            className="w-full px-4 py-3 rounded-2xl border border-border bg-muted/30 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)]
-                         transition-all resize-none placeholder:text-muted-foreground"
+                            className="w-full px-4 py-3 rounded-2xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all resize-none placeholder:text-muted-foreground"
                         />
                         <div className="flex justify-end">
                             <button type="submit" disabled={submitting || !comment.trim()} className="btn-pet-primary disabled:opacity-50">

@@ -2,6 +2,15 @@ import api from "@/lib/axios";
 import type { Post, Comment } from "@/types/post";
 import type { ApiResponse, PaginatedResponse } from "@/types/api";
 
+export interface PostPayload {
+    title: string;
+    content: string;
+    excerpt?: string;
+    thumbnail?: string;
+    tags?: string[];
+    type?: "blog" | "forum_topic";
+}
+
 export const postService = {
     getPosts: async (page = 1, limit = 9, search = ""): Promise<PaginatedResponse<Post>> => {
         const res = await api.get<ApiResponse<PaginatedResponse<Post>>>(
@@ -15,17 +24,13 @@ export const postService = {
         return res.data.data;
     },
 
-    createPost: async (data: FormData): Promise<Post> => {
-        const res = await api.post<ApiResponse<Post>>("/posts", data, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+    createPost: async (data: PostPayload): Promise<Post> => {
+        const res = await api.post<ApiResponse<Post>>("/posts", data);
         return res.data.data;
     },
 
-    updatePost: async (id: string, data: FormData): Promise<Post> => {
-        const res = await api.put<ApiResponse<Post>>(`/posts/${id}`, data, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+    updatePost: async (id: string, data: PostPayload): Promise<Post> => {
+        const res = await api.put<ApiResponse<Post>>(`/posts/${id}`, data);
         return res.data.data;
     },
 

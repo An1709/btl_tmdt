@@ -5,43 +5,51 @@ import qs from 'qs';
 import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 
-// Helper: generate VNPay payment URL (mirrors paymentController logic but uses real orderId)
+const ORDER_STATUS_FLOW = ['Pending', 'Processing', 'Shipping', 'Delivered'];
+
+// Must match paymentController.js exactly — this is the VNPay-verified sort logic
+function sortObject(obj) {
+    const sorted = {};
+    const keys = Object.keys(obj).map(k => encodeURIComponent(k)).sort();
+    for (const key of keys) {
+        sorted[key] = encodeURIComponent(obj[decodeURIComponent(key)]).replace(/%20/g, '+');
+    }
+    return sorted;
+}
+
+// Helper: generate VNPay payment URL using real order ID
 function buildVNPayUrl(orderId, amount, ipAddr) {
     process.env.TZ = 'Asia/Ho_Chi_Minh';
 
     const createDate = moment().format('YYYYMMDDHHmmss');
-    const txnRef = String(orderId).slice(-8).toUpperCase(); // use order ID as ref
+    // txnRef must be unique per transaction; use last 8 chars of Mongo ObjectId
+    const txnRef = String(orderId).slice(-8).toUpperCase();
 
-    let vnp_Params = {
-        vnp_Version: '2.1.0',
-        vnp_Command: 'pay',
-        vnp_TmnCode: vnpayConfig.vnp_TmnCode,
-        vnp_Locale: 'vn',
-        vnp_CurrCode: 'VND',
-        vnp_TxnRef: txnRef,
-        vnp_OrderInfo: 'Thanh toan don hang #' + txnRef,
-        vnp_OrderType: 'other',
-        vnp_Amount: amount * 100,
-        vnp_ReturnUrl: vnpayConfig.vnp_ReturnUrl,
-        vnp_IpAddr: ipAddr,
-        vnp_CreateDate: createDate,
-    };
+    let vnp_Params = {};
+    vnp_Params['vnp_Version']   = '2.1.0';
+    vnp_Params['vnp_Command']   = 'pay';
+    vnp_Params['vnp_TmnCode']   = vnpayConfig.vnp_TmnCode;
+    vnp_Params['vnp_Locale']    = 'vn';
+    vnp_Params['vnp_CurrCode']  = 'VND';
+    vnp_Params['vnp_TxnRef']    = txnRef;
+    vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang:' + txnRef;
+    vnp_Params['vnp_OrderType'] = 'other';
+    vnp_Params['vnp_Amount']    = amount * 100;
+    vnp_Params['vnp_ReturnUrl'] = vnpayConfig.vnp_ReturnUrl;
+    vnp_Params['vnp_IpAddr']    = ipAddr;
+    vnp_Params['vnp_CreateDate']= createDate;
 
-    // Sort params (VNPAY requirement)
-    const sortedParams = {};
-    Object.keys(vnp_Params)
-        .sort()
-        .forEach((key) => {
-            sortedParams[encodeURIComponent(key)] = encodeURIComponent(vnp_Params[key]).replace(/%20/g, '+');
-        });
+    // Sort BEFORE hashing (VNPay requirement)
+    vnp_Params = sortObject(vnp_Params);
 
-    const signData = qs.stringify(sortedParams, { encode: false });
-    const hmac = crypto.createHmac('sha512', vnpayConfig.vnp_HashSecret);
-    const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
+    const signData = qs.stringify(vnp_Params, { encode: false });
+    const hmac     = crypto.createHmac('sha512', vnpayConfig.vnp_HashSecret);
+    const signed   = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
-    sortedParams['vnp_SecureHash'] = signed;
-    return vnpayConfig.vnp_Url + '?' + qs.stringify(sortedParams, { encode: false });
+    vnp_Params['vnp_SecureHash'] = signed;
+    return vnpayConfig.vnp_Url + '?' + qs.stringify(vnp_Params, { encode: false });
 }
+
 
 // @desc    Tạo đơn hàng mới
 // @route   POST /api/orders
@@ -124,6 +132,68 @@ export const getMyOrders = async (req, res, next) => {
 
 // @desc    Lấy chi tiết đơn hàng
 // @route   GET /api/orders/:id
+// @desc    Admin get all orders
+// @route   GET /api/orders
+export const getOrders = async (req, res, next) => {
+    try {
+        const orders = await Order.find({})
+            .populate('user', 'username displayName email')
+            .sort({ createdAt: -1 });
+
+        res.json(orders);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Admin update order status one step at a time
+// @route   PUT /api/orders/:id/status
+export const updateOrderStatus = async (req, res, next) => {
+    try {
+        const { status } = req.body;
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ message: 'Khong tim thay don hang' });
+        }
+
+        if (!ORDER_STATUS_FLOW.includes(status)) {
+            return res.status(400).json({ message: 'Trang thai don hang khong hop le' });
+        }
+
+        if (order.status === 'Cancelled') {
+            return res.status(400).json({ message: 'Khong the cap nhat don hang da huy' });
+        }
+
+        const currentIndex = ORDER_STATUS_FLOW.indexOf(order.status);
+        if (currentIndex === -1) {
+            return res.status(400).json({ message: 'Trang thai hien tai khong hop le' });
+        }
+
+        const nextStatus = ORDER_STATUS_FLOW[currentIndex + 1];
+
+        if (!nextStatus) {
+            return res.status(400).json({ message: 'Don hang da o trang thai cuoi' });
+        }
+
+        if (status !== nextStatus) {
+            return res.status(400).json({ message: `Chi co the chuyen sang trang thai ${nextStatus}` });
+        }
+
+        order.status = status;
+
+        if (status === 'Delivered') {
+            order.isDelivered = true;
+            order.deliveredAt = new Date();
+        }
+
+        const updatedOrder = await order.save();
+        res.json(updatedOrder);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getOrderById = async (req, res, next) => {
     try {
         const order = await Order.findById(req.params.id).populate('user', 'fullName email');

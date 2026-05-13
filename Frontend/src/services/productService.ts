@@ -1,5 +1,5 @@
 import api from "@/lib/axios";
-import type { Product, ProductBadge, ProductCategory } from "@/types/product";
+import type { Product, ProductBadge, ProductCategory, ProductReview } from "@/types/product";
 import type { PaginatedResponse } from "@/types/api";
 import { categoryService } from "@/services/categoryService";
 
@@ -19,6 +19,23 @@ export interface ReviewPayload {
     comment: string;
 }
 
+interface ReviewResponse {
+    message: string;
+    review: ProductReview;
+    averageRating: number;
+    reviewCount: number;
+}
+
+export interface ProductPayload {
+    name: string;
+    price: number;
+    description: string;
+    category: string;
+    stock: number;
+    images?: string[];
+    specifications?: Record<string, string>;
+}
+
 // ── Adapter: normalise MongoDB document → frontend Product ─────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapProduct = (raw: any): Product => ({
@@ -31,10 +48,14 @@ const mapProduct = (raw: any): Product => ({
     originalPrice: raw.originalPrice ?? undefined,
     // backend stores images as an array; take first one
     image: Array.isArray(raw.images) && raw.images.length > 0 ? raw.images[0] : (raw.image ?? ""),
+    images: Array.isArray(raw.images) ? raw.images : [],
     // category may be a populated object or a plain string/id
     category: (typeof raw.category === "object" && raw.category !== null
         ? (raw.category.slug ?? raw.category.name ?? "accessory")
         : (raw.category ?? "accessory")) as ProductCategory,
+    categoryId: typeof raw.category === "object" && raw.category !== null
+        ? (raw.category._id ?? raw.category.id)
+        : raw.category,
     rating: raw.averageRating ?? raw.rating ?? 0,
     reviewCount: raw.reviewCount ?? 0,
     // derive badge: sale if discounted, hot if sold >200, new otherwise
@@ -45,6 +66,8 @@ const mapProduct = (raw: any): Product => ({
             : raw.badge ?? undefined) as ProductBadge | undefined,
     description: raw.description ?? "",
     inStock: (raw.stock ?? 0) > 0,
+    stock: raw.stock ?? 0,
+    reviews: Array.isArray(raw.reviews) ? raw.reviews : [],
 });
 
 // ── Backend response type (raw, before mapping) ────────────────────────────
@@ -110,17 +133,13 @@ export const productService = {
         return mapProduct(res.data);
     },
 
-    create: async (data: FormData): Promise<Product> => {
-        const res = await api.post<RawSingleResponse>("/products", data, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+    create: async (data: ProductPayload): Promise<Product> => {
+        const res = await api.post<RawSingleResponse>("/products", data);
         return mapProduct(res.data);
     },
 
-    update: async (id: string, data: FormData): Promise<Product> => {
-        const res = await api.put<RawSingleResponse>(`/products/${id}`, data, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+    update: async (id: string, data: ProductPayload): Promise<Product> => {
+        const res = await api.put<RawSingleResponse>(`/products/${id}`, data);
         return mapProduct(res.data);
     },
 
@@ -128,7 +147,8 @@ export const productService = {
         await api.delete(`/products/${id}`);
     },
 
-    submitReview: async (productId: string, payload: ReviewPayload): Promise<void> => {
-        await api.post(`/products/${productId}/reviews`, payload);
+    submitReview: async (productId: string, payload: ReviewPayload): Promise<ReviewResponse> => {
+        const res = await api.post<ReviewResponse>(`/products/${productId}/reviews`, payload);
+        return res.data;
     },
 };

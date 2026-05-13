@@ -1,28 +1,26 @@
-import {create} from "zustand";
-import {toast} from "sonner";
+import { create } from "zustand";
+import { toast } from "sonner";
 import { authService } from "@/services/authService";
 import type { AuthState } from "@/types/store";
 
-//file này dùng để quản lý trạng thái xác thực người dùng trong ứng dụng frontend bằng thư viện Zustand.
-
 export const useAuthStore = create<AuthState>((set, get) => ({
     accessToken: null,
-    user: null, 
+    user: null,
     loading: false,
+    initialized: false,
+
     setAccessToken: (accessToken) => {
         set({ accessToken });
     },
 
     clearState: () => {
-        set({accessToken: null, user: null, loading: false});
+        set({ accessToken: null, user: null, loading: false, initialized: true });
     },
 
     signUp: async (username, password, email, firstname, lastname) => {
         try {
             set({ loading: true });
-            // Gọi API đăng ký
             await authService.signUp(username, password, email, firstname, lastname);
-
             toast.success("Đăng ký thành công! Vui lòng đăng nhập.");
         } catch (error) {
             console.error("Đăng ký thất bại:", error);
@@ -36,12 +34,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     signIn: async (username, password) => {
         try {
             set({ loading: true });
-            
-            const {accessToken} = await authService.signIn(username, password);
 
+            const { accessToken } = await authService.signIn(username, password);
             get().setAccessToken(accessToken);
 
             await get().fetchMe();
+            set({ initialized: true });
 
             toast.success("Đăng nhập thành công!");
         } catch (error) {
@@ -70,18 +68,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     fetchMe: async () => {
         try {
             set({ loading: true });
-        const res = await authService.fetchMe();
-        
-        // KIỂM TRA LOG Ở ĐÂY ĐỂ DEBUG
-        console.log("Raw response from service:", res);
 
-        // Giả sử res trả về object { user: {...} }, ta chỉ lấy phần ruột
-        // Nếu res chính là user info thì giữ nguyên, nếu bọc trong 'user' thì lấy res.user
-        const userData = res.user ? res.user : res; 
-        
-        set({ user: userData }); 
-        
-        console.log("User saved to store:", userData);
+            const res = await authService.fetchMe();
+            const userData = res.user ? res.user : res;
+
+            set({ user: userData });
         } catch (error) {
             console.error("Lấy thông tin người dùng thất bại:", error);
             set({ user: null, accessToken: null });
@@ -89,28 +80,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             throw error;
         } finally {
             set({ loading: false });
-        }       
-    },  
+        }
+    },
+
     refresh: async () => {
         try {
-            set ({ loading: true });
-            const {user, fetchMe} = get();
+            set({ loading: true });
 
-            const response = await authService.refresh();
-            const newAccessToken = response.accessToken || response; // Bắt trường hợp trả về object hoặc string
-        
+            const newAccessToken = await authService.refresh();
             get().setAccessToken(newAccessToken);
 
-            if (!user) {
-                await fetchMe(); //nếu chưa có thông tin người dùng, gọi fetchMe để lấy thông tin
+            if (!get().user) {
+                await get().fetchMe();
             }
+
             return newAccessToken;
         } catch (error) {
             console.error("Làm mới access token thất bại:", error);
             toast.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
             return false;
         } finally {
-            set ({ loading: false });
+            set({ loading: false });
         }
-    }
+    },
+
+    initializeAuth: async () => {
+        if (get().initialized || get().loading) return;
+
+        try {
+            set({ loading: true });
+
+            const accessToken = await authService.refresh();
+            set({ accessToken });
+
+            const res = await authService.fetchMe();
+            const userData = res.user ? res.user : res;
+            set({ user: userData });
+        } catch {
+            set({ accessToken: null, user: null });
+        } finally {
+            set({ loading: false, initialized: true });
+        }
+    },
 }));

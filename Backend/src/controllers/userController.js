@@ -14,6 +14,7 @@ const sanitizeUser = (user) => ({
     avatarUrl: user.avatarUrl,
     bio: user.bio,
     isBlocked: user.isBlocked,
+    isEmailVerified: user.isEmailVerified !== false,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
 });
@@ -134,6 +135,7 @@ export const createUser = async (req, res) => {
             role: payload.role || 'customer',
             hashedPassword,
             isBlocked: Boolean(req.body.isBlocked),
+            isEmailVerified: true,
         });
 
         return res.status(201).json({ success: true, data: sanitizeUser(user) });

@@ -9,12 +9,12 @@ import { Label } from "../ui/label";
 import { useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-const signInSchema = z.object({ // kiểm tra dữ liệu đầu vào
+const signInSchema = z.object({
   username: z.string().min(3, "Tên đăng nhập phải có ít nhất 3 ký tự"),
   password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
 });
 
-type SignInFormValues = z.infer<typeof signInSchema>; // kiểu dữ liệu của form signin
+type SignInFormValues = z.infer<typeof signInSchema>;
 
 export function SigninForm({ className, ...props }: React.ComponentProps<"div">) {
   const { signIn } = useAuthStore();
@@ -29,38 +29,31 @@ export function SigninForm({ className, ...props }: React.ComponentProps<"div">)
 
   const onSubmit = async (data: SignInFormValues) => {
     const { username, password } = data;
-    await signIn(username, password);
-    // Read the latest user state directly from the store after signIn
-    const currentUser = useAuthStore.getState().user;
-    if (currentUser?.role === "admin" || currentUser?.role === "staff") {
-      navigate("/admin");
-    } else {
-      navigate("/");
+    try {
+      await signIn(username, password);
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser?.role === "admin" || currentUser?.role === "staff") {
+        navigate("/admin");
+      } else {
+        navigate("/");
+      }
+    } catch (error) {
+      const authError = (error as { response?: { data?: { code?: string; email?: string } } }).response?.data;
+      if (authError?.code === "EMAIL_NOT_VERIFIED" && authError.email) {
+        navigate(`/verify-email?email=${encodeURIComponent(authError.email)}`);
+      }
     }
   };
 
   return (
-    <div
-      className={cn("flex flex-col gap-6", className)}
-      {...props}
-    >
+    <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0 border-border">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form
-            className="p-6 md:p-8"
-            onSubmit={handleSubmit(onSubmit)}
-          >
+          <form className="p-6 md:p-8" onSubmit={handleSubmit(onSubmit)}>
             <div className="flex flex-col gap-6">
-              {/* header - logo */}
               <div className="flex flex-col items-center text-center gap-2">
-                <a
-                  href="/"
-                  className="mx-auto block w-fit text-center"
-                >
-                  <img
-                    src="/logo.svg"
-                    alt="logo"
-                  />
+                <a href="/" className="mx-auto block w-fit text-center">
+                  <img src="/logo.svg" alt="logo" />
                 </a>
 
                 <h1 className="text-2xl font-bold">Chào mừng bạn quay lại!</h1>
@@ -69,12 +62,8 @@ export function SigninForm({ className, ...props }: React.ComponentProps<"div">)
                 </p>
               </div>
 
-              {/* username */}
               <div className="flex flex-col gap-3">
-                <Label
-                  htmlFor="username"
-                  className="block text-sm"
-                >
+                <Label htmlFor="username" className="block text-sm">
                   Tên đăng nhập
                 </Label>
                 <Input
@@ -84,47 +73,33 @@ export function SigninForm({ className, ...props }: React.ComponentProps<"div">)
                   {...register("username")}
                 />
                 {errors.username && (
-                  <p className="text-destructive text-sm">
-                    {errors.username.message}
-                  </p>
+                  <p className="text-destructive text-sm">{errors.username.message}</p>
                 )}
               </div>
 
-              {/* password */}
               <div className="flex flex-col gap-3">
-                <Label
-                  htmlFor="password"
-                  className="block text-sm"
-                >
+                <Label htmlFor="password" className="block text-sm">
                   Mật khẩu
                 </Label>
-                <Input
-                  type="password"
-                  id="password"
-                  {...register("password")}
-                />
+                <Input type="password" id="password" {...register("password")} />
                 {errors.password && (
-                  <p className="text-destructive text-sm">
-                    {errors.password.message}
-                  </p>
+                  <p className="text-destructive text-sm">{errors.password.message}</p>
                 )}
               </div>
 
-              {/* nút đăng nhập */}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isSubmitting}
-              >
+              <div className="text-right text-sm">
+                <a href="/forgot-password" className="underline underline-offset-4">
+                  Quên mật khẩu?
+                </a>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
                 Đăng nhập
               </Button>
 
               <div className="text-center text-sm">
                 Chưa có tài khoản?{" "}
-                <a
-                  href="/signup"
-                  className="underline underline-offset-4"
-                >
+                <a href="/signup" className="underline underline-offset-4">
                   Đăng ký
                 </a>
               </div>

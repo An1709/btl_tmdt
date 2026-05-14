@@ -33,7 +33,11 @@ export const protectedRoute = async (req, res, next) => {
         }
 
         if (user.isBlocked) {
-            return res.status(403).json({ message: 'Tai khoan da bi khoa' });
+            return res.status(403).json({ message: 'Tài khoản đã bị khóa.' });
+        }
+
+        if (user.isEmailVerified === false) {
+            return res.status(403).json({ message: 'Vui lòng xác minh email trước khi sử dụng tài khoản.' });
         }
 
         // Gán user vào req để các route phía sau sử dụng

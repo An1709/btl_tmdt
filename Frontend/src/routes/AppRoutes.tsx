@@ -13,6 +13,8 @@ import HomePage from "@/pages/HomePage";
 import ProductPage from "@/pages/shop/ProductPage";
 import SignInPage from "@/pages/SignInPage";
 import SignUpPage from "@/pages/SignUpPage";
+import VerifyEmailPage from "@/pages/VerifyEmailPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 
 // Lazy load heavier pages
 const ProductDetailPage = lazy(() => import("@/pages/shop/ProductDetailPage"));
@@ -72,6 +74,8 @@ const AppRoutes = () => (
         <Route element={<AuthLayout />}>
             <Route path="signin" element={<SignInPage />} />
             <Route path="signup" element={<SignUpPage />} />
+            <Route path="verify-email" element={<VerifyEmailPage />} />
+            <Route path="forgot-password" element={<ForgotPasswordPage />} />
         </Route>
 
         {/* ── Admin routes ── */}

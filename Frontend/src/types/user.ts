@@ -9,6 +9,7 @@ export interface User {
     phone?: string;
     address?: string;
     isBlocked?: boolean;
+    isEmailVerified?: boolean;
     createdAt?: string;
     updatedAt?: string;
 }

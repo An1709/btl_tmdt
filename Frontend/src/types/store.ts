@@ -1,4 +1,5 @@
 import type { User } from "./user";
+import type { SignUpResponse } from "@/services/authService";
 
 export interface AuthState {
     accessToken: string | null;
@@ -12,7 +13,7 @@ export interface AuthState {
         email: string,
         firstname: string,
         lastname: string
-    ) => Promise<void>;
+    ) => Promise<SignUpResponse>;
 
     signIn: (username: string, password: string) => Promise<void>;
     signOut: () => Promise<void>;

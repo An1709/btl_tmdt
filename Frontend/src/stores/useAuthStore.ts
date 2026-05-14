@@ -3,6 +3,9 @@ import { toast } from "sonner";
 import { authService } from "@/services/authService";
 import type { AuthState } from "@/types/store";
 
+const getAuthError = (error: unknown) =>
+    (error as { response?: { data?: { code?: string; email?: string; message?: string } } }).response?.data;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
     accessToken: null,
     user: null,
@@ -20,8 +23,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     signUp: async (username, password, email, firstname, lastname) => {
         try {
             set({ loading: true });
-            await authService.signUp(username, password, email, firstname, lastname);
-            toast.success("Đăng ký thành công! Vui lòng đăng nhập.");
+            const response = await authService.signUp(username, password, email, firstname, lastname);
+            toast.success("Đăng ký thành công! Vui lòng kiểm tra email để xác minh tài khoản.");
+            return response;
         } catch (error) {
             console.error("Đăng ký thất bại:", error);
             toast.error("Đăng ký thất bại. Vui lòng thử lại.");
@@ -44,7 +48,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             toast.success("Đăng nhập thành công!");
         } catch (error) {
             console.error("Đăng nhập thất bại:", error);
-            toast.error("Sai tên đăng nhập hoặc mật khẩu. Vui lòng thử lại.");
+            const authError = getAuthError(error);
+            toast.error(
+                authError?.code === "EMAIL_NOT_VERIFIED"
+                    ? "Vui lòng xác minh email trước khi đăng nhập."
+                    : "Sai tên đăng nhập hoặc mật khẩu. Vui lòng thử lại."
+            );
             throw error;
         } finally {
             set({ loading: false });

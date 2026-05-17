@@ -64,6 +64,29 @@ export const updateUserProfile = async (req, res) => {
     }
 };
 
+export const updateUserAvatar = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'Vui lòng chọn tệp ảnh hợp lệ.' });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+
+        user.avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const updatedUser = await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Cập nhật ảnh đại diện thành công.',
+            data: sanitizeUser(updatedUser),
+        });
+    } catch (error) {
+        console.error('Error in updateUserAvatar:', error);
+        return res.status(500).json({ message: 'Không thể cập nhật ảnh đại diện. Vui lòng thử lại.' });
+    }
+};
+
 export const getAllUsers = async (req, res) => {
     try {
         const page = Math.max(parseInt(req.query.page) || 1, 1);

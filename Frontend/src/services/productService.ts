@@ -38,7 +38,7 @@ export interface ProductPayload {
 
 // ── Adapter: normalise MongoDB document → frontend Product ─────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapProduct = (raw: any): Product => ({
+export const mapProduct = (raw: any): Product => ({
     id: raw._id ?? raw.id,
     name: raw.name ?? "",
     // breed & age live inside specifications (Map) if present

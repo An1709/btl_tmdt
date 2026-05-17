@@ -49,7 +49,17 @@ export const orderService = {
         return res.data;
     },
 
-    cancelOrder: async (id: string): Promise<void> => {
-        await api.put(`/orders/${id}/cancel`);
+    requestCancellation: async (id: string, reason?: string): Promise<Order> => {
+        const res = await api.post<{ message: string; order: Order }>(`/orders/${id}/cancel-request`, { reason });
+        return res.data.order;
+    },
+
+    resolveCancellation: async (
+        id: string,
+        action: "approve" | "reject",
+        reason?: string
+    ): Promise<Order> => {
+        const res = await api.put<Order>(`/orders/${id}/cancel-request`, { action, reason });
+        return res.data;
     },
 };

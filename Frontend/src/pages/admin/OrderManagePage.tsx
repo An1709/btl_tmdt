@@ -31,12 +31,13 @@ const OrderManagePage = () => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("all");
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [resolvingCancelId, setResolvingCancelId] = useState<string | null>(null);
 
     const load = () => {
         setLoading(true);
         orderService.getAllOrders()
             .then((res) => setOrders(res.orders))
-            .catch(console.error)
+            .catch(() => toast.error("Không thể tải danh sách đơn hàng. Vui lòng thử lại."))
             .finally(() => setLoading(false));
     };
 
@@ -62,6 +63,23 @@ const OrderManagePage = () => {
         }
     };
 
+    const handleResolveCancellation = async (order: Order, action: "approve" | "reject") => {
+        try {
+            setResolvingCancelId(order._id);
+            const updatedOrder = await orderService.resolveCancellation(order._id, action);
+            setOrders((prev) => prev.map((o) => o._id === order._id ? updatedOrder : o));
+            toast.success(action === "approve" ? "Đã chấp nhận hủy đơn." : "Đã từ chối yêu cầu hủy.");
+        } catch (err: unknown) {
+            const message =
+                err && typeof err === "object" && "response" in err
+                    ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(message ?? "Không thể xử lý yêu cầu hủy. Vui lòng thử lại.");
+        } finally {
+            setResolvingCancelId(null);
+        }
+    };
+
     const filtered = filter === "all" ? orders : orders.filter((o) => o.status === filter);
 
     const columns: Column<Order>[] = [
@@ -71,9 +89,29 @@ const OrderManagePage = () => {
         { key: "total", header: "Tổng tiền", render: (o) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(o.totalPrice)}</span> },
         {
             key: "status", header: "Trạng thái", render: (o) => (
-                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${STATUS_COLORS[o.status]}`}>
-                    {ORDER_STATUS_LABELS[o.status] ?? o.status}
-                </span>
+                <div className="flex flex-col gap-1">
+                    <span className={`text-xs font-bold px-2 py-1 rounded-lg ${STATUS_COLORS[o.status]} w-fit`}>
+                        {ORDER_STATUS_LABELS[o.status] ?? o.status}
+                    </span>
+                    {o.cancelStatus === "pending" && (
+                        <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-amber-100 text-amber-700 w-fit">
+                            Khách yêu cầu hủy
+                        </span>
+                    )}
+                </div>
+            )
+        },
+        {
+            key: "cancel", header: "Yêu cầu hủy", render: (o) => (
+                o.cancelStatus === "pending" ? (
+                    <div className="text-xs text-muted-foreground max-w-52">
+                        <p className="font-semibold text-foreground">Đang chờ xử lý</p>
+                        {o.cancelReason && <p className="line-clamp-2">Lý do: {o.cancelReason}</p>}
+                        {o.cancelRequestedAt && <p>{formatDate(o.cancelRequestedAt)}</p>}
+                    </div>
+                ) : (
+                    <span className="text-xs text-muted-foreground">Không có</span>
+                )
             )
         },
     ];
@@ -97,6 +135,27 @@ const OrderManagePage = () => {
                 actions={(o) => {
                     const nextStatus = NEXT_STATUS[o.status];
                     const actionLabel = NEXT_STATUS_ACTION[o.status];
+
+                    if (o.cancelStatus === "pending") {
+                        return (
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    onClick={() => handleResolveCancellation(o, "approve")}
+                                    disabled={resolvingCancelId === o._id}
+                                    className="text-xs px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-all font-semibold disabled:opacity-50"
+                                >
+                                    Chấp nhận hủy
+                                </button>
+                                <button
+                                    onClick={() => handleResolveCancellation(o, "reject")}
+                                    disabled={resolvingCancelId === o._id}
+                                    className="text-xs px-3 py-1.5 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-all font-semibold disabled:opacity-50"
+                                >
+                                    Từ chối hủy
+                                </button>
+                            </div>
+                        );
+                    }
 
                     if (!nextStatus || !actionLabel) {
                         return <span className="text-xs text-muted-foreground">Không còn bước tiếp theo</span>;

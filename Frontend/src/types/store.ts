@@ -21,4 +21,5 @@ export interface AuthState {
     refresh: () => Promise<string | false>;
     initializeAuth: () => Promise<void>;
     setAccessToken: (accessToken: string | null) => void;
+    setUser: (user: User | null) => void;
 }

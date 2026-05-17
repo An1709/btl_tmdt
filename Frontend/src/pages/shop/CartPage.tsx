@@ -2,9 +2,18 @@ import { Link } from "react-router";
 import { useCartStore } from "@/stores/useCartStore";
 import CartItemComponent from "@/components/features/cart/CartItem";
 import CartSummary from "@/components/features/cart/CartSummary";
+import { toast } from "sonner";
 
 const CartPage = () => {
     const { items, clearCart } = useCartStore();
+
+    const handleClearCart = async () => {
+        try {
+            await clearCart();
+        } catch {
+            toast.error("Không thể xóa giỏ hàng. Vui lòng thử lại.");
+        }
+    };
 
     if (items.length === 0) {
         return (
@@ -22,7 +31,7 @@ const CartPage = () => {
             <div className="flex items-center justify-between mb-6">
                 <h1 className="section-title">🛒 Giỏ Hàng ({items.length})</h1>
                 <button
-                    onClick={clearCart}
+                    onClick={handleClearCart}
                     className="text-sm text-muted-foreground hover:text-red-500 transition-colors underline underline-offset-2"
                 >
                     Xóa tất cả

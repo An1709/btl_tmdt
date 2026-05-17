@@ -32,6 +32,12 @@ export interface Order {
     isDelivered: boolean;
     deliveredAt?: string;
     status: OrderStatus;
+    cancelRequested?: boolean;
+    cancelReason?: string;
+    cancelRequestedAt?: string;
+    cancelStatus?: "none" | "pending" | "approved" | "rejected";
+    cancelResolvedAt?: string;
+    cancelRejectionReason?: string;
     coupon?: string;
     createdAt: string;
     updatedAt: string;

@@ -10,21 +10,30 @@ const WishlistPage = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const load = () => {
-        collectionService.getWishlist().then(setProducts).catch(console.error).finally(() => setLoading(false));
-    };
+    useEffect(() => {
+        let isMounted = true;
 
-    useEffect(load, []);
+        const loadWishlist = async () => {
+            try {
+                const wishlistProducts = await collectionService.getWishlist();
+                if (isMounted) {
+                    setProducts(wishlistProducts);
+                }
+            } catch {
+                toast.error("Không thể tải danh sách yêu thích. Vui lòng thử lại.");
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
 
-    const handleRemove = async (productId: string) => {
-        try {
-            await collectionService.removeFromWishlist(productId);
-            setProducts((p) => p.filter((x) => x.id !== productId));
-            toast.success("Đã xóa khỏi danh sách yêu thích.");
-        } catch {
-            toast.error("Không thể xóa. Vui lòng thử lại.");
-        }
-    };
+        void loadWishlist();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
@@ -37,9 +46,15 @@ const WishlistPage = () => {
                         <p className="text-muted-foreground">Chưa có sản phẩm yêu thích.</p>
                     </div>
                 ) : (
-                    <ProductList products={products} />
+                    <ProductList
+                        products={products}
+                        onWishlistChange={(productId, wishlisted) => {
+                            if (!wishlisted) {
+                                setProducts((currentProducts) => currentProducts.filter((product) => product.id !== productId));
+                            }
+                        }}
+                    />
                 )}
-                <p className="sr-only">{handleRemove.toString()}</p>
             </main>
         </div>
     );

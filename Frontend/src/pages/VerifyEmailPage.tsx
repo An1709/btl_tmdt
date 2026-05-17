@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -11,8 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const verifyEmailSchema = z.object({
-  email: z.email("Email không hợp lệ"),
-  code: z.string().regex(/^\d{6}$/, "Mã xác minh phải gồm 6 chữ số"),
+  code: z.string().regex(/^\d{6}$/, "Mã OTP phải gồm 6 chữ số"),
 });
 
 type VerifyEmailFormValues = z.infer<typeof verifyEmailSchema>;
@@ -26,52 +25,122 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const OTP_TTL_SECONDS = 90;
+const RESEND_COOLDOWN_SECONDS = 30;
+
+const getStoredExpiresAt = (email: string) => {
+  if (!email) return new Date().getTime() + OTP_TTL_SECONDS * 1000;
+
+  const storedValue = sessionStorage.getItem(`registrationOtpExpiresAt:${email.toLowerCase()}`);
+  const storedExpiresAt = Number(storedValue);
+
+  return Number.isFinite(storedExpiresAt) && storedExpiresAt > 0
+    ? storedExpiresAt
+    : new Date().getTime() + OTP_TTL_SECONDS * 1000;
+};
+
+const formatTime = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+};
+
 const VerifyEmailPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const emailFromQuery = useMemo(() => searchParams.get("email") || "", [searchParams]);
+  const registrationEmail = useMemo(
+    () => sessionStorage.getItem("registrationOtpEmail") || "",
+    []
+  );
+  const email = registrationEmail || emailFromQuery;
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [serverError, setServerError] = useState("");
+  const [expiresAt, setExpiresAt] = useState(() => getStoredExpiresAt(email));
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(0, Math.ceil((getStoredExpiresAt(email) - new Date().getTime()) / 1000))
+  );
 
   const {
     register,
     handleSubmit,
-    getValues,
+    setValue,
     formState: { errors },
   } = useForm<VerifyEmailFormValues>({
     resolver: zodResolver(verifyEmailSchema),
     defaultValues: {
-      email: emailFromQuery,
       code: "",
     },
   });
 
+  const isExpired = secondsLeft <= 0;
+  const canResend = secondsLeft <= OTP_TTL_SECONDS - RESEND_COOLDOWN_SECONDS;
+
+  useEffect(() => {
+    if (!registrationEmail || (emailFromQuery && emailFromQuery.toLowerCase() !== registrationEmail)) {
+      navigate("/signup", { replace: true });
+    }
+  }, [emailFromQuery, navigate, registrationEmail]);
+
+  useEffect(() => {
+    const updateSecondsLeft = () => {
+      setSecondsLeft(Math.max(0, Math.ceil((expiresAt - new Date().getTime()) / 1000)));
+    };
+
+    updateSecondsLeft();
+    const timerId = window.setInterval(updateSecondsLeft, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [expiresAt]);
+
+  useEffect(() => {
+    if (isExpired) {
+      setServerError((currentError) =>
+        currentError || "Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã."
+      );
+    }
+  }, [isExpired]);
+
   const onSubmit = async (data: VerifyEmailFormValues) => {
+    if (isExpired) {
+      setServerError("Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.");
+      return;
+    }
+
     setSubmitting(true);
     setServerError("");
 
     try {
-      await authService.verifyEmail(data.email, data.code);
-      toast.success("Xác minh email thành công! Vui lòng đăng nhập.");
+      await authService.verifyEmail(email, data.code);
+      sessionStorage.removeItem("registrationOtpEmail");
+      sessionStorage.removeItem(`registrationOtpExpiresAt:${email.toLowerCase()}`);
+      toast.success("Xác thực email thành công. Tài khoản của bạn đã được tạo.");
       navigate("/signin");
     } catch (error) {
-      setServerError(getErrorMessage(error, "Mã xác minh không hợp lệ hoặc đã hết hạn."));
+      setServerError(getErrorMessage(error, "Mã OTP không hợp lệ."));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleResend = async () => {
-    const email = getValues("email");
+    if (!email || !canResend) return;
+
     setResending(true);
     setServerError("");
 
     try {
-      await authService.resendVerificationCode(email);
-      toast.success("Đã gửi lại mã xác minh. Vui lòng kiểm tra email.");
+      const response = await authService.resendVerificationCode(email);
+      const nextExpiresAt = new Date().getTime() + (response.expiresIn || OTP_TTL_SECONDS) * 1000;
+      sessionStorage.setItem(`registrationOtpExpiresAt:${email.toLowerCase()}`, String(nextExpiresAt));
+      setExpiresAt(nextExpiresAt);
+      setSecondsLeft(OTP_TTL_SECONDS);
+      setValue("code", "");
+      toast.success(response.message || "Mã OTP mới đã được gửi.");
     } catch (error) {
-      setServerError(getErrorMessage(error, "Không thể gửi lại mã xác minh lúc này."));
+      setServerError(getErrorMessage(error, "Không thể gửi lại mã OTP lúc này."));
     } finally {
       setResending(false);
     }
@@ -93,21 +162,19 @@ const VerifyEmailPage = () => {
                   <p className="text-muted-foreground text-balance">
                     Nhập mã 6 chữ số đã được gửi đến email của bạn.
                   </p>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <Label htmlFor="email" className="block text-sm">
-                    Email
-                  </Label>
-                  <Input type="email" id="email" {...register("email")} />
-                  {errors.email && (
-                    <p className="text-destructive text-sm">{errors.email.message}</p>
-                  )}
+                  <p className="text-sm font-medium break-all">
+                    Mã OTP đã được gửi đến: {email}
+                  </p>
+                  <p className={isExpired ? "text-destructive text-sm" : "text-sm font-medium"}>
+                    {isExpired
+                      ? "Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã."
+                      : `Mã OTP hết hạn sau ${formatTime(secondsLeft)}`}
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-3">
                   <Label htmlFor="code" className="block text-sm">
-                    Mã xác minh
+                    Mã OTP
                   </Label>
                   <Input
                     type="text"
@@ -115,6 +182,7 @@ const VerifyEmailPage = () => {
                     maxLength={6}
                     id="code"
                     placeholder="123456"
+                    disabled={isExpired}
                     {...register("code")}
                   />
                   {errors.code && (
@@ -124,7 +192,7 @@ const VerifyEmailPage = () => {
 
                 {serverError && <p className="text-destructive text-sm">{serverError}</p>}
 
-                <Button type="submit" className="w-full" disabled={submitting}>
+                <Button type="submit" className="w-full" disabled={submitting || isExpired}>
                   {submitting ? "Đang xác minh..." : "Xác minh tài khoản"}
                 </Button>
 
@@ -132,9 +200,9 @@ const VerifyEmailPage = () => {
                   type="button"
                   className="text-center text-sm underline underline-offset-4 disabled:opacity-50"
                   onClick={handleResend}
-                  disabled={resending}
+                  disabled={resending || !canResend}
                 >
-                  {resending ? "Đang gửi lại..." : "Gửi lại mã xác minh"}
+                  {resending ? "Đang gửi lại..." : "Gửi lại mã OTP"}
                 </button>
 
                 <div className="text-center text-sm">

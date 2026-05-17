@@ -7,6 +7,9 @@ interface PostCardProps {
 }
 
 const PostCard = ({ post }: PostCardProps) => {
+    const tags = Array.isArray(post.tags) ? post.tags : [];
+    const authorName = post.author?.displayName || post.author?.username || "PetMart";
+
     return (
         <article className="pet-card flex flex-col group overflow-hidden">
             {/* Image */}
@@ -17,9 +20,9 @@ const PostCard = ({ post }: PostCardProps) => {
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     loading="lazy"
                 />
-                {post.tags.length > 0 && (
+                {tags.length > 0 && (
                     <div className="absolute top-3 left-3">
-                        <span className="badge-new">{post.tags[0]}</span>
+                        <span className="badge-new">{tags[0]}</span>
                     </div>
                 )}
             </div>
@@ -40,9 +43,9 @@ const PostCard = ({ post }: PostCardProps) => {
                 <div className="mt-auto flex items-center justify-between gap-2 pt-3 border-t border-border">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                            {post.author.displayName?.[0] ?? "P"}
+                            {authorName[0] ?? "P"}
                         </div>
-                        <span className="text-xs font-semibold text-foreground truncate">{post.author.displayName}</span>
+                        <span className="text-xs font-semibold text-foreground truncate">{authorName}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span>👁 {post.viewCount}</span>

@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import type { Product } from "@/types/product";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
+import { collectionService } from "@/services/collectionService";
 
 interface ProductCardProps {
     product: Product;
+    onWishlistChange?: (productId: string, wishlisted: boolean) => void;
 }
 
 const formatPrice = (price: number) =>
@@ -37,22 +39,80 @@ const badgeConfig = {
     sale: { label: "SALE", className: "badge-sale" },
 };
 
-const ProductCard = ({ product }: ProductCardProps) => {
+const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
     const addItem = useCartStore((s) => s.addItem);
     const { user } = useAuthStore();
     const navigate = useNavigate();
     const [added, setAdded] = useState(false);
     const [wishlisted, setWishlisted] = useState(false);
+    const [updatingWishlist, setUpdatingWishlist] = useState(false);
 
-    const handleAddToCart = () => {
+    useEffect(() => {
+        let cancelled = false;
+
+        if (!user) {
+            setWishlisted(false);
+            return;
+        }
+
+        collectionService.getWishlist()
+            .then((products) => {
+                if (!cancelled) {
+                    setWishlisted(products.some((item) => item.id === product.id));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setWishlisted(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [product.id, user]);
+
+    const handleAddToCart = async () => {
         if (!user) {
             toast.error("Vui lòng đăng nhập để thêm vào giỏ hàng!");
             navigate("/signin");
             return;
         }
-        addItem(product);
-        setAdded(true);
-        setTimeout(() => setAdded(false), 1500);
+        try {
+            await addItem(product);
+            setAdded(true);
+            setTimeout(() => setAdded(false), 1500);
+            toast.success("Đã thêm vào giỏ hàng.");
+        } catch {
+            toast.error("Không thể thêm vào giỏ hàng. Vui lòng thử lại.");
+        }
+    };
+
+    const handleToggleWishlist = async () => {
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để thêm vào yêu thích!");
+            navigate("/signin");
+            return;
+        }
+
+        setUpdatingWishlist(true);
+        try {
+            if (wishlisted) {
+                await collectionService.removeFromWishlist(product.id);
+                setWishlisted(false);
+                onWishlistChange?.(product.id, false);
+                toast.success("Đã xóa khỏi danh sách yêu thích.");
+            } else {
+                await collectionService.addToWishlist(product.id);
+                setWishlisted(true);
+                onWishlistChange?.(product.id, true);
+                toast.success("Đã thêm vào yêu thích.");
+            }
+        } catch (error) {
+            const message =
+                error && typeof error === "object" && "response" in error
+                    ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(message ?? "Không thể cập nhật yêu thích. Vui lòng thử lại.");
+        } finally {
+            setUpdatingWishlist(false);
+        }
     };
 
     return (
@@ -75,7 +135,8 @@ const ProductCard = ({ product }: ProductCardProps) => {
 
                 {/* Wishlist */}
                 <button
-                    onClick={() => setWishlisted((p) => !p)}
+                    onClick={handleToggleWishlist}
+                    disabled={updatingWishlist}
                     aria-label="Yêu thích"
                     className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center
                      transition-all duration-200 hover:scale-110

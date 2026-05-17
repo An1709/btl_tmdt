@@ -5,6 +5,7 @@ import { orderService } from "@/services/orderService";
 import type { Order } from "@/types/order";
 import { formatCurrency, formatDate } from "@/utils/format";
 import Loading from "@/components/common/Loading";
+import { toast } from "sonner";
 
 // Backend status values are PascalCase: Pending → Processing → Shipping → Delivered
 const STATUS_STEPS = ["Pending", "Processing", "Shipping", "Delivered"] as const;
@@ -17,11 +18,22 @@ const STATUS_LABELS: Record<string, string> = {
     Cancelled:  "Đã hủy",
 };
 
+const getErrorMessage = (err: unknown, fallback: string) => {
+    if (err && typeof err === "object" && "response" in err) {
+        return (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? fallback;
+    }
+
+    return fallback;
+};
+
 const OrderDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const [order, setOrder] = useState<Order | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [cancelReason, setCancelReason] = useState("");
+    const [requestingCancel, setRequestingCancel] = useState(false);
 
     useEffect(() => {
         if (!id) return;
@@ -35,6 +47,27 @@ const OrderDetailPage = () => {
             .catch(() => setError("Không thể tải đơn hàng. Vui lòng thử lại."))
             .finally(() => setLoading(false));
     }, [id]);
+
+    const canRequestCancel = order
+        && ["Pending", "Processing"].includes(order.status)
+        && order.cancelStatus !== "pending";
+
+    const handleCancelRequest = async () => {
+        if (!order) return;
+
+        setRequestingCancel(true);
+        try {
+            const updatedOrder = await orderService.requestCancellation(order._id, cancelReason.trim());
+            setOrder(updatedOrder);
+            setShowCancelDialog(false);
+            setCancelReason("");
+            toast.success("Yêu cầu hủy đơn đã được gửi.");
+        } catch (err) {
+            toast.error(getErrorMessage(err, "Đơn hàng này không thể hủy ở trạng thái hiện tại."));
+        } finally {
+            setRequestingCancel(false);
+        }
+    };
 
     // ── Loading state ──
     if (loading) {
@@ -74,6 +107,15 @@ const OrderDetailPage = () => {
                         #{order._id.slice(-8).toUpperCase()}
                     </h1>
                 </div>
+
+                {order.cancelStatus === "pending" && (
+                    <div className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900 p-4 mb-5">
+                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Yêu cầu hủy đơn đang chờ quản trị viên xử lý.</p>
+                        {order.cancelReason && (
+                            <p className="text-sm text-muted-foreground mt-1">Lý do: {order.cancelReason}</p>
+                        )}
+                    </div>
+                )}
 
                 {/* Status tracker — only for non-cancelled orders */}
                 {order.status !== "Cancelled" && (
@@ -193,9 +235,56 @@ const OrderDetailPage = () => {
                                 <span className="text-foreground font-semibold">{formatDate(order.createdAt)}</span>
                             </p>
                         </div>
+
+                        {canRequestCancel && (
+                            <button
+                                type="button"
+                                onClick={() => setShowCancelDialog(true)}
+                                className="w-full px-4 py-3 rounded-2xl bg-red-50 text-red-600 font-bold text-sm hover:bg-red-100 transition-all"
+                            >
+                                Yêu cầu hủy đơn
+                            </button>
+                        )}
                     </div>
                 </div>
             </main>
+
+            {showCancelDialog && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+                    <div className="w-full max-w-md bg-white dark:bg-card rounded-2xl border border-border p-5 shadow-xl">
+                        <h2 className="font-bold text-lg mb-2" style={{ fontFamily: "'Nunito', sans-serif" }}>Yêu cầu hủy đơn</h2>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Bạn chắc chắn muốn gửi yêu cầu hủy đơn hàng này? Quản trị viên sẽ kiểm tra trước khi hủy.
+                        </p>
+                        <textarea
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            maxLength={500}
+                            rows={3}
+                            placeholder="Lý do hủy đơn (không bắt buộc)"
+                            className="w-full px-4 py-3 rounded-2xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all resize-none placeholder:text-muted-foreground"
+                        />
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowCancelDialog(false)}
+                                disabled={requestingCancel}
+                                className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-all disabled:opacity-50"
+                            >
+                                Đóng
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCancelRequest}
+                                disabled={requestingCancel}
+                                className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-all disabled:opacity-50"
+                            >
+                                {requestingCancel ? "Đang gửi..." : "Gửi yêu cầu"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

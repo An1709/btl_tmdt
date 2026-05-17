@@ -7,9 +7,10 @@ interface ProductListProps {
     title?: string;
     subtitle?: string;
     viewAllLink?: string;
+    onWishlistChange?: (productId: string, wishlisted: boolean) => void;
 }
 
-const ProductList = ({ products, title, subtitle, viewAllLink }: ProductListProps) => {
+const ProductList = ({ products, title, subtitle, viewAllLink, onWishlistChange }: ProductListProps) => {
     if (products.length === 0) {
         return (
             <div className="text-center py-16 text-muted-foreground">
@@ -50,7 +51,7 @@ const ProductList = ({ products, title, subtitle, viewAllLink }: ProductListProp
                         className="animate-fade-in-up"
                         style={{ animationDelay: `${idx * 0.07}s` }}
                     >
-                        <ProductCard product={product} />
+                        <ProductCard product={product} onWishlistChange={onWishlistChange} />
                     </div>
                 ))}
             </div>

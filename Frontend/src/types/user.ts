@@ -4,7 +4,10 @@ export interface User {
     email: string;
     displayName: string;
     role?: 'customer' | 'admin' | 'staff';
+    avatar?: string;
     avatarUrl?: string;
+    photoURL?: string;
+    image?: string;
     bio?: string;
     phone?: string;
     address?: string;

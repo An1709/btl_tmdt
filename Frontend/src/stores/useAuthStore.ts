@@ -2,9 +2,15 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { authService } from "@/services/authService";
 import type { AuthState } from "@/types/store";
+import type { User } from "@/types/user";
 
 const getAuthError = (error: unknown) =>
     (error as { response?: { data?: { code?: string; email?: string; message?: string } } }).response?.data;
+
+const normalizeUser = (user: User): User => ({
+    ...user,
+    avatarUrl: user.avatarUrl || user.avatar || user.photoURL || user.image || "",
+});
 
 export const useAuthStore = create<AuthState>((set, get) => ({
     accessToken: null,
@@ -16,6 +22,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ accessToken });
     },
 
+    setUser: (user) => {
+        set({ user: user ? normalizeUser(user) : null });
+    },
+
     clearState: () => {
         set({ accessToken: null, user: null, loading: false, initialized: true });
     },
@@ -24,11 +34,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
             set({ loading: true });
             const response = await authService.signUp(username, password, email, firstname, lastname);
-            toast.success("Đăng ký thành công! Vui lòng kiểm tra email để xác minh tài khoản.");
+            toast.success(response.message || "Mã OTP đã được gửi đến email của bạn.");
             return response;
         } catch (error) {
-            console.error("Đăng ký thất bại:", error);
-            toast.error("Đăng ký thất bại. Vui lòng thử lại.");
+            const authError = getAuthError(error);
+            toast.error(authError?.message || "Đăng ký thất bại. Vui lòng thử lại.");
             throw error;
         } finally {
             set({ loading: false });
@@ -79,7 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ loading: true });
 
             const res = await authService.fetchMe();
-            const userData = res.user ? res.user : res;
+            const userData = normalizeUser(res.user ? res.user : res);
 
             set({ user: userData });
         } catch (error) {
@@ -123,7 +133,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ accessToken });
 
             const res = await authService.fetchMe();
-            const userData = res.user ? res.user : res;
+            const userData = normalizeUser(res.user ? res.user : res);
             set({ user: userData });
         } catch {
             set({ accessToken: null, user: null });

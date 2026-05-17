@@ -7,13 +7,28 @@ import SignUpPage from "./pages/SignUpPage";
 import AuthLayout from "./layouts/AuthLayout";
 import { useEffect } from "react";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useCartStore } from "@/stores/useCartStore";
 
 function App() {
   const initializeAuth = useAuthStore((state) => state.initializeAuth);
+  const user = useAuthStore((state) => state.user);
+  const initialized = useAuthStore((state) => state.initialized);
+  const fetchCart = useCartStore((state) => state.fetchCart);
+  const clearLocalCart = useCartStore((state) => state.clearLocalCart);
 
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    if (user?._id) {
+      void fetchCart(user._id);
+    } else {
+      clearLocalCart();
+    }
+  }, [clearLocalCart, fetchCart, initialized, user?._id]);
 
   return (
     <>

@@ -12,15 +12,41 @@ const BlogListPage = () => {
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
     const debouncedSearch = useDebounce(search, 400);
     const limit = 9;
 
     useEffect(() => {
-        setLoading(true);
-        postService.getPosts(page, limit, debouncedSearch)
-            .then((res) => { setPosts(res.data); setTotal(res.total); })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        let isMounted = true;
+
+        const loadPosts = async () => {
+            setLoading(true);
+            setError("");
+
+            try {
+                const res = await postService.getPosts(page, limit, debouncedSearch);
+                if (isMounted) {
+                    setPosts(res.data);
+                    setTotal(res.total);
+                }
+            } catch {
+                if (isMounted) {
+                    setPosts([]);
+                    setTotal(0);
+                    setError("Không thể tải danh sách bài viết. Vui lòng thử lại sau.");
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        void loadPosts();
+
+        return () => {
+            isMounted = false;
+        };
     }, [page, debouncedSearch]);
 
     const totalPages = Math.ceil(total / limit);
@@ -32,23 +58,27 @@ const BlogListPage = () => {
                 <p className="text-muted-foreground text-sm">Mẹo chăm sóc thú cưng, tin tức và nhiều hơn nữa</p>
             </div>
 
-            {/* Search */}
             <div className="relative max-w-lg mx-auto mb-10">
                 <input
                     type="text"
                     value={search}
                     onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    placeholder="🔍 Tìm kiếm bài viết..."
+                    placeholder="Tìm kiếm bài viết..."
                     className="w-full px-5 py-3 pl-12 rounded-2xl border border-border bg-white dark:bg-card text-sm
                      focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all shadow-sm"
                 />
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">🔍</span>
             </div>
 
-            {loading ? <Loading /> : posts.length === 0 ? (
+            {loading ? <Loading /> : error ? (
                 <div className="text-center py-16">
                     <div className="text-5xl mb-3">📝</div>
-                    <p className="text-muted-foreground">Không tìm thấy bài viết nào.</p>
+                    <p className="text-muted-foreground">{error}</p>
+                </div>
+            ) : posts.length === 0 ? (
+                <div className="text-center py-16">
+                    <div className="text-5xl mb-3">📝</div>
+                    <p className="text-muted-foreground">Chưa có bài viết nào.</p>
                 </div>
             ) : (
                 <>

@@ -6,6 +6,13 @@ export interface SignUpResponse {
   message: string;
   email: string;
   requiresVerification: boolean;
+  expiresIn?: number;
+}
+
+export interface OtpResponse {
+  success: boolean;
+  message: string;
+  expiresIn?: number;
 }
 
 export const authService = {
@@ -36,18 +43,20 @@ export const authService = {
     return response.data;
   },
 
-  forgotPassword: async (username: string, email: string) => {
+  forgotPassword: async (username: string, email: string): Promise<OtpResponse> => {
     const response = await api.post("/auth/forgot-password", { username, email });
     return response.data;
   },
 
   resetPassword: async (
+    username: string,
     email: string,
     code: string,
     newPassword: string,
     confirmNewPassword: string
   ) => {
     const response = await api.post("/auth/reset-password", {
+      username,
       email,
       code,
       newPassword,

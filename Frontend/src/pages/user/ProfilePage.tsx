@@ -1,29 +1,108 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/common/Sidebar";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { userService } from "@/services/userService";
 import { toast } from "sonner";
+import UserAvatar from "@/components/common/UserAvatar";
+
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+    (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
 
 const ProfilePage = () => {
-    const { user, fetchMe } = useAuthStore();
+    const { user, fetchMe, setUser } = useAuthStore();
     const [form, setForm] = useState({
         displayName: user?.displayName ?? "",
-        bio: (user as unknown as { bio?: string })?.bio ?? "",
-        phone: (user as unknown as { phone?: string })?.phone ?? "",
+        bio: user?.bio ?? "",
+        phone: user?.phone ?? "",
     });
+    const [selectedAvatar, setSelectedAvatar] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState("");
+    const avatarPreviewRef = useRef("");
     const [saving, setSaving] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [oldPwd, setOldPwd] = useState("");
     const [newPwd, setNewPwd] = useState("");
     const [changingPwd, setChangingPwd] = useState(false);
 
+    useEffect(() => () => {
+        if (avatarPreviewRef.current) {
+            URL.revokeObjectURL(avatarPreviewRef.current);
+        }
+    }, []);
+
     const inputCls = "w-full px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground";
+
+    const clearAvatarSelection = () => {
+        setSelectedAvatar(null);
+        setAvatarPreview("");
+        if (avatarPreviewRef.current) {
+            URL.revokeObjectURL(avatarPreviewRef.current);
+            avatarPreviewRef.current = "";
+        }
+    };
+
+    const handleAvatarSelect = (file?: File) => {
+        if (!file) return;
+
+        if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+            clearAvatarSelection();
+            toast.error("Vui lòng chọn tệp ảnh hợp lệ.");
+            return;
+        }
+
+        if (file.size > MAX_AVATAR_SIZE) {
+            clearAvatarSelection();
+            toast.error("Tệp ảnh quá lớn.");
+            return;
+        }
+
+        if (avatarPreviewRef.current) {
+            URL.revokeObjectURL(avatarPreviewRef.current);
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        avatarPreviewRef.current = previewUrl;
+        setAvatarPreview(previewUrl);
+        setSelectedAvatar(file);
+    };
+
+    const uploadSelectedAvatar = async () => {
+        if (!selectedAvatar) {
+            toast.error("Vui lòng chọn tệp ảnh hợp lệ.");
+            return null;
+        }
+
+        setUploadingAvatar(true);
+        try {
+            const updatedUser = await userService.updateAvatar(selectedAvatar);
+            setUser(updatedUser);
+            clearAvatarSelection();
+            toast.success("Cập nhật ảnh đại diện thành công.");
+            return updatedUser;
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Không thể cập nhật ảnh đại diện. Vui lòng thử lại."));
+            return null;
+        } finally {
+            setUploadingAvatar(false);
+        }
+    };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
         try {
             await userService.updateProfile(form);
-            await fetchMe?.();
+
+            if (selectedAvatar) {
+                const updatedUser = await uploadSelectedAvatar();
+                if (!updatedUser) return;
+            } else {
+                await fetchMe?.();
+            }
+
             toast.success("Cập nhật thông tin thành công!");
         } catch {
             toast.error("Không thể cập nhật. Vui lòng thử lại.");
@@ -39,7 +118,8 @@ const ProfilePage = () => {
         try {
             await userService.changePassword(oldPwd, newPwd);
             toast.success("Đổi mật khẩu thành công!");
-            setOldPwd(""); setNewPwd("");
+            setOldPwd("");
+            setNewPwd("");
         } catch {
             toast.error("Mật khẩu cũ không đúng hoặc đã xảy ra lỗi.");
         } finally {
@@ -53,8 +133,45 @@ const ProfilePage = () => {
             <main className="flex-1 flex flex-col gap-6">
                 <h1 className="section-title">👤 Tài Khoản</h1>
 
-                {/* Profile form */}
                 <div className="bg-white dark:bg-card rounded-2xl border border-border p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+                        {avatarPreview ? (
+                            <img
+                                src={avatarPreview}
+                                alt="Xem trước ảnh đại diện"
+                                className="w-16 h-16 rounded-full object-cover shrink-0 ring-2 ring-[var(--pet-coral)]/30"
+                            />
+                        ) : (
+                            <UserAvatar user={user} className="w-16 h-16" fallbackClassName="text-2xl" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                            <p className="font-bold text-foreground truncate">{user?.displayName || user?.username}</p>
+                            <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
+                            {selectedAvatar && (
+                                <p className="text-xs text-[var(--pet-coral)] mt-1 truncate">{selectedAvatar.name}</p>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <label className="btn-pet-secondary text-sm cursor-pointer">
+                                Chọn ảnh
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="sr-only"
+                                    onChange={(e) => handleAvatarSelect(e.target.files?.[0])}
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => void uploadSelectedAvatar()}
+                                disabled={!selectedAvatar || uploadingAvatar || saving}
+                                className="btn-pet-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {uploadingAvatar ? "Đang cập nhật..." : "Cập nhật ảnh đại diện"}
+                            </button>
+                        </div>
+                    </div>
+
                     <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>Thông tin cá nhân</h2>
                     <form onSubmit={handleSave} className="flex flex-col gap-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -76,12 +193,13 @@ const ProfilePage = () => {
                             <textarea className={`${inputCls} resize-none`} rows={3} placeholder="Vài dòng về bạn..." value={form.bio} onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))} />
                         </div>
                         <div className="flex justify-end">
-                            <button type="submit" disabled={saving} className="btn-pet-primary disabled:opacity-50">{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
+                            <button type="submit" disabled={saving || uploadingAvatar} className="btn-pet-primary disabled:opacity-50">
+                                {saving ? "Đang lưu..." : "Lưu thay đổi"}
+                            </button>
                         </div>
                     </form>
                 </div>
 
-                {/* Change password */}
                 <div className="bg-white dark:bg-card rounded-2xl border border-border p-6">
                     <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>🔒 Đổi mật khẩu</h2>
                     <form onSubmit={handleChangePwd} className="flex flex-col gap-4 max-w-md">

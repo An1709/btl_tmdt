@@ -79,10 +79,10 @@ const CheckoutPage = () => {
 
             // Backend returns paymentUrl in the response for VNPay orders
             if (paymentMethod === "vnpay" && order.paymentUrl) {
-                clearCart();
+                await clearCart();
                 window.location.href = order.paymentUrl;
             } else {
-                clearCart();
+                await clearCart();
                 toast.success("Đặt hàng thành công! 🎉");
                 navigate(`/orders/${order._id}`);
             }

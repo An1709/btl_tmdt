@@ -11,6 +11,44 @@ const recalculateProductRating = async (product) => {
     await product.save({ validateBeforeSave: false });
 };
 
+const getReviewSummary = async (productIds) => {
+    const ids = Array.isArray(productIds) ? productIds : [productIds];
+    const summary = await Review.aggregate([
+        { $match: { product: { $in: ids } } },
+        {
+            $group: {
+                _id: '$product',
+                reviewCount: { $sum: 1 },
+                averageRating: { $avg: '$rating' },
+            },
+        },
+    ]);
+
+    return new Map(summary.map((item) => [
+        String(item._id),
+        {
+            reviewCount: item.reviewCount,
+            averageRating: item.averageRating || 0,
+        },
+    ]));
+};
+
+const applyReviewSummary = (product, summaryMap) => {
+    const productObject = typeof product.toObject === 'function'
+        ? product.toObject({ virtuals: true })
+        : product;
+    const summary = summaryMap.get(String(productObject._id)) || {
+        reviewCount: 0,
+        averageRating: 0,
+    };
+
+    return {
+        ...productObject,
+        reviewCount: summary.reviewCount,
+        averageRating: summary.averageRating,
+    };
+};
+
 const normalizeImages = (images) => {
     if (Array.isArray(images)) {
         return images.map((image) => String(image).trim()).filter(Boolean);
@@ -64,9 +102,10 @@ export const getProducts = async (req, res) => {
 
         const products = await features.query;
         const totalProducts = await Product.countDocuments(features.query.getFilter());
+        const summaryMap = await getReviewSummary(products.map((product) => product._id));
 
         res.json({
-            products,
+            products: products.map((product) => applyReviewSummary(product, summaryMap)),
             page: Number(req.query.page) || 1,
             pages: Math.ceil(totalProducts / (Number(req.query.limit) || 10)),
             total: totalProducts
@@ -90,10 +129,22 @@ export const getProductById = async (req, res) => {
             return res.status(404).json({ message: 'Product not found' });
         }
 
+        const reviews = product.reviews || [];
+        const reviewCount = reviews.length;
+        const averageRating = reviewCount
+            ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+            : 0;
+
         product.views = (product.views || 0) + 1;
+        product.reviewCount = reviewCount;
+        product.averageRating = averageRating;
         product.save({ validateBeforeSave: false }).catch(() => {});
 
-        res.json(product);
+        const responseProduct = product.toObject({ virtuals: true });
+        responseProduct.reviewCount = reviewCount;
+        responseProduct.averageRating = averageRating;
+
+        res.json(responseProduct);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

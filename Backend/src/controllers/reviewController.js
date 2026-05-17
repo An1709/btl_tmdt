@@ -1,6 +1,20 @@
 import Review from '../models/Review.js';
 import Product from '../models/Product.js';
 
+const recalculateProductRating = async (productId) => {
+    const reviews = await Review.find({ product: productId });
+    await Product.findByIdAndUpdate(
+        productId,
+        {
+            reviewCount: reviews.length,
+            averageRating: reviews.length
+                ? reviews.reduce((acc, item) => acc + item.rating, 0) / reviews.length
+                : 0,
+        },
+        { runValidators: false },
+    );
+};
+
 // @desc    Lấy tất cả đánh giá (Admin - Để kiểm duyệt)
 // @route   GET /api/reviews
 export const getAllReviews = async (req, res) => {
@@ -27,26 +41,10 @@ export const deleteReview = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đánh giá' });
         }
 
-        // 1. Tìm sản phẩm để cập nhật lại rating trung bình
-        const product = await Product.findById(review.product);
-        if (product) {
-            // Logic tính lại rating sau khi xóa review
-            // (Total cũ - rating review này) / (số lượng cũ - 1)
-            const oldTotalScore = product.averageRating * product.reviewCount;
-            const newCount = product.reviewCount - 1;
-
-            if (newCount > 0) {
-                product.averageRating = (oldTotalScore - review.rating) / newCount;
-                product.reviewCount = newCount;
-            } else {
-                product.averageRating = 0;
-                product.reviewCount = 0;
-            }
-            await product.save();
-        }
-
-        // 2. Xóa review khỏi DB
+        const productId = review.product;
         await review.deleteOne();
+        await recalculateProductRating(productId);
+
         res.json({ message: 'Đã xóa đánh giá vi phạm' });
 
     } catch (error) {

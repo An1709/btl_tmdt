@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { formatCurrency } from "@/utils/format";
 import ProductReviews from "@/components/features/product/ProductReviews";
 import { toast } from "sonner";
+import { collectionService } from "@/services/collectionService";
 
 // ── Detail page skeleton ──────────────────────────────────────────────────
 const DetailSkeleton = () => (
@@ -42,6 +43,8 @@ const ProductDetailPage = () => {
     const [notFound, setNotFound] = useState(false);
     const [qty, setQty] = useState(1);
     const [added, setAdded] = useState(false);
+    const [wishlisted, setWishlisted] = useState(false);
+    const [updatingWishlist, setUpdatingWishlist] = useState(false);
 
     const loadProduct = useCallback(() => {
         if (!id) return Promise.resolve();
@@ -72,6 +75,27 @@ const ProductDetailPage = () => {
         return () => { cancelled = true; };
     }, [id]);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        if (!user || !product) {
+            setWishlisted(false);
+            return;
+        }
+
+        collectionService.getWishlist()
+            .then((products) => {
+                if (!cancelled) {
+                    setWishlisted(products.some((item) => item.id === product.id));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setWishlisted(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [product, user]);
+
     if (loading) return <DetailSkeleton />;
 
     if (notFound || !product) {
@@ -84,16 +108,49 @@ const ProductDetailPage = () => {
         );
     }
 
-    const handleAdd = () => {
+    const handleAdd = async () => {
         if (!user) {
             toast.error("Vui lòng đăng nhập để thêm vào giỏ hàng!");
             navigate("/signin");
             return;
         }
-        for (let i = 0; i < qty; i++) addItem(product);
-        toast.success(`Đã thêm ${qty} "${product.name}" vào giỏ hàng!`);
-        setAdded(true);
-        setTimeout(() => setAdded(false), 2000);
+        try {
+            await addItem(product, qty);
+            toast.success(`Đã thêm ${qty} "${product.name}" vào giỏ hàng!`);
+            setAdded(true);
+            setTimeout(() => setAdded(false), 2000);
+        } catch {
+            toast.error("Không thể thêm vào giỏ hàng. Vui lòng thử lại.");
+        }
+    };
+
+    const handleToggleWishlist = async () => {
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để thêm vào yêu thích!");
+            navigate("/signin");
+            return;
+        }
+
+        setUpdatingWishlist(true);
+        try {
+            if (wishlisted) {
+                await collectionService.removeFromWishlist(product.id);
+                setWishlisted(false);
+                toast.success("Đã xóa khỏi danh sách yêu thích.");
+            } else {
+                await collectionService.addToWishlist(product.id);
+                setWishlisted(true);
+                toast.success("Đã thêm vào yêu thích.");
+            }
+        } catch (error) {
+            const message =
+                error && typeof error === "object" && "response" in error
+                    ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(message ?? "Không thể cập nhật yêu thích. Vui lòng thử lại.");
+        } finally {
+            setUpdatingWishlist(false);
+        }
     };
 
     const discount = product.originalPrice
@@ -184,6 +241,19 @@ const ProductDetailPage = () => {
                                 className={`btn-pet-primary flex-1 justify-center transition-all ${added ? "bg-emerald-500" : ""}`}
                             >
                                 {added ? "✓ Đã thêm!" : "🛒 Thêm vào giỏ"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleToggleWishlist}
+                                disabled={updatingWishlist}
+                                className={`px-4 py-3 rounded-2xl font-semibold transition-all disabled:opacity-50 ${
+                                    wishlisted
+                                        ? "bg-red-500 text-white"
+                                        : "border border-border text-muted-foreground hover:text-red-500 hover:bg-red-50"
+                                }`}
+                                aria-label="Yêu thích"
+                            >
+                                ♥
                             </button>
                         </div>
                     )}

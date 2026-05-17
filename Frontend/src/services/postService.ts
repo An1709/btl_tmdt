@@ -11,17 +11,42 @@ export interface PostPayload {
     type?: "blog" | "forum_topic";
 }
 
+const fallbackAuthor = {
+    _id: "",
+    username: "petmart",
+    displayName: "PetMart",
+};
+
+const normalizePost = (post: Post): Post => ({
+    ...post,
+    excerpt: post.excerpt ?? "",
+    coverImage: post.coverImage ?? "",
+    author: post.author ?? fallbackAuthor,
+    tags: Array.isArray(post.tags) ? post.tags : [],
+    comments: Array.isArray(post.comments) ? post.comments : [],
+    viewCount: Number(post.viewCount ?? 0),
+});
+
+const normalizePaginatedPosts = (response: PaginatedResponse<Post>): PaginatedResponse<Post> => ({
+    ...response,
+    data: Array.isArray(response.data) ? response.data.map(normalizePost) : [],
+    total: Number(response.total ?? 0),
+    page: Number(response.page ?? 1),
+    limit: Number(response.limit ?? 9),
+    totalPages: Number(response.totalPages ?? 0),
+});
+
 export const postService = {
     getPosts: async (page = 1, limit = 9, search = ""): Promise<PaginatedResponse<Post>> => {
         const res = await api.get<ApiResponse<PaginatedResponse<Post>>>(
             `/posts?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`
         );
-        return res.data.data;
+        return normalizePaginatedPosts(res.data.data);
     },
 
     getPostBySlug: async (slug: string): Promise<Post> => {
         const res = await api.get<ApiResponse<Post>>(`/posts/${slug}`);
-        return res.data.data;
+        return normalizePost(res.data.data);
     },
 
     createPost: async (data: PostPayload): Promise<Post> => {

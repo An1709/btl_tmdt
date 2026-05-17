@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 import connectDB from './config/db.js';
 
 // Import các Routes
@@ -13,6 +14,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import collectionRoutes from './routes/collectionRoutes.js';
+import cartRoutes from './routes/cartRoutes.js';
 import couponRoutes from './routes/couponRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import warrantyRoutes from './routes/warrantyRoutes.js';
@@ -40,6 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // 4. Xử lý Cookies
 app.use(cookieParser());
+app.use('/uploads', express.static(path.resolve('uploads')));
 
 // --- Routes Definition ---
 
@@ -51,6 +54,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/coupons', couponRoutes);
 
@@ -58,6 +62,7 @@ app.use('/api/coupons', couponRoutes);
 // Features & Content
 app.use('/api/ai', aiRoutes);
 app.use('/api/collection', collectionRoutes); // Yêu thích
+app.use('/api/collections', collectionRoutes); // Frontend alias for wishlist
 app.use('/api/posts', postRoutes);            // Blog & Forum
 app.use('/api/warranty', warrantyRoutes);     // Bảo hành
 app.use('/api/reviews', reviewRoutes);        // Đánh giá

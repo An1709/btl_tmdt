@@ -2,6 +2,7 @@ import express from 'express';
 import {
     getUserProfile,
     updateUserProfile,
+    updateUserAvatar,
     getAllUsers,
     createUser,
     updateUser,
@@ -11,12 +12,27 @@ import {
     test,
 } from '../controllers/userController.js';
 import { protectedRoute, adminRoute } from '../middlewares/authMiddleware.js';
+import upload from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
 
 router.route('/profile')
     .get(protectedRoute, getUserProfile)
     .put(protectedRoute, updateUserProfile);
+
+const uploadAvatar = (req, res, next) => {
+    upload.single('avatar')(req, res, (error) => {
+        if (!error) return next();
+
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ message: 'Tệp ảnh quá lớn.' });
+        }
+
+        return res.status(400).json({ message: error.message || 'Vui lòng chọn tệp ảnh hợp lệ.' });
+    });
+};
+
+router.put('/me/avatar', protectedRoute, uploadAvatar, updateUserAvatar);
 
 router.route('/')
     .get(protectedRoute, adminRoute, getAllUsers)

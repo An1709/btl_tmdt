@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 
 const ORDER_STATUS_FLOW = ['Pending', 'Processing', 'Shipping', 'Delivered'];
+const CUSTOMER_CANCELLABLE_STATUSES = ['Pending', 'Processing'];
 
 // Must match paymentController.js exactly — this is the VNPay-verified sort logic
 function sortObject(obj) {
@@ -165,6 +166,10 @@ export const updateOrderStatus = async (req, res, next) => {
             return res.status(400).json({ message: 'Khong the cap nhat don hang da huy' });
         }
 
+        if (order.cancelStatus === 'pending') {
+            return res.status(400).json({ message: 'Don hang dang co yeu cau huy, vui long xu ly yeu cau truoc' });
+        }
+
         const currentIndex = ORDER_STATUS_FLOW.indexOf(order.status);
         if (currentIndex === -1) {
             return res.status(400).json({ message: 'Trang thai hien tai khong hop le' });
@@ -189,6 +194,83 @@ export const updateOrderStatus = async (req, res, next) => {
 
         const updatedOrder = await order.save();
         res.json(updatedOrder);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Customer request order cancellation
+// @route   POST /api/orders/:id/cancel-request
+export const requestOrderCancellation = async (req, res, next) => {
+    try {
+        const { reason } = req.body;
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
+        }
+
+        if (!order.user.equals(req.user._id)) {
+            return res.status(403).json({ message: 'Bạn không có quyền hủy đơn hàng này.' });
+        }
+
+        if (!CUSTOMER_CANCELLABLE_STATUSES.includes(order.status)) {
+            return res.status(400).json({ message: 'Đơn hàng này không thể hủy ở trạng thái hiện tại.' });
+        }
+
+        if (order.cancelStatus === 'pending') {
+            return res.status(400).json({ message: 'Yêu cầu hủy đơn đã được gửi trước đó.' });
+        }
+
+        order.cancelRequested = true;
+        order.cancelReason = String(reason || '').trim();
+        order.cancelRequestedAt = new Date();
+        order.cancelStatus = 'pending';
+        order.cancelResolvedAt = undefined;
+        order.cancelRejectionReason = undefined;
+
+        const updatedOrder = await order.save();
+        res.status(200).json({
+            message: 'Yêu cầu hủy đơn đã được gửi.',
+            order: updatedOrder,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Admin approve/reject cancellation request
+// @route   PUT /api/orders/:id/cancel-request
+export const resolveOrderCancellation = async (req, res, next) => {
+    try {
+        const { action, reason } = req.body;
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
+        }
+
+        if (order.cancelStatus !== 'pending') {
+            return res.status(400).json({ message: 'Đơn hàng không có yêu cầu hủy đang chờ xử lý.' });
+        }
+
+        if (action === 'approve') {
+            order.status = 'Cancelled';
+            order.cancelRequested = false;
+            order.cancelStatus = 'approved';
+            order.cancelResolvedAt = new Date();
+            order.cancelRejectionReason = undefined;
+        } else if (action === 'reject') {
+            order.cancelRequested = false;
+            order.cancelStatus = 'rejected';
+            order.cancelResolvedAt = new Date();
+            order.cancelRejectionReason = String(reason || '').trim();
+        } else {
+            return res.status(400).json({ message: 'Hành động xử lý yêu cầu hủy không hợp lệ.' });
+        }
+
+        const updatedOrder = await order.save();
+        res.status(200).json(updatedOrder);
     } catch (error) {
         next(error);
     }

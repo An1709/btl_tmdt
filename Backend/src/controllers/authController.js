@@ -4,12 +4,15 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import Session from '../models/Session.js';
 import VerificationCode from '../models/VerificationCode.js';
+import PendingRegistration from '../models/PendingRegistration.js';
 import sendEmail, { EmailDeliveryError } from '../utils/sendEmail.js';
 
 const ACCESS_TOKEN_TTL = '30m'; // 30 phút
 const REFRESH_TOKEN_TTL = 14 * 24 * 60 * 60 * 1000;
-const VERIFICATION_CODE_TTL = 10 * 60 * 1000;
-const RESEND_COOLDOWN = 60 * 1000;
+const VERIFICATION_CODE_TTL = 90 * 1000;
+const REGISTRATION_OTP_TTL = 90 * 1000;
+const REGISTRATION_RESEND_COOLDOWN = 30 * 1000;
+const RESEND_COOLDOWN = 30 * 1000;
 const MAX_VERIFICATION_ATTEMPTS = 5;
 const EMAIL_VERIFICATION_PURPOSE = 'email_verification';
 const PASSWORD_RESET_PURPOSE = 'password_reset';
@@ -77,10 +80,41 @@ const sendVerificationEmail = async (user, code) => {
                 <p>Xin chào ${user.displayName},</p>
                 <p>Mã xác minh của bạn là:</p>
                 <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${code}</p>
-                <p>Mã này sẽ hết hạn sau 10 phút. Nếu bạn không tạo tài khoản, vui lòng bỏ qua email này.</p>
+                <p>Mã này sẽ hết hạn sau 1 phút 30 giây. Nếu bạn không tạo tài khoản, vui lòng bỏ qua email này.</p>
             </div>
         `,
     });
+};
+
+const sendRegistrationOtpEmail = async (pendingRegistration, code) => {
+    await sendEmail({
+        email: pendingRegistration.email,
+        subject: 'Mã OTP đăng ký tài khoản PetShop',
+        message: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <h2>Xác thực email đăng ký tài khoản PetShop</h2>
+                <p>Xin chào ${pendingRegistration.displayName},</p>
+                <p>Mã OTP của bạn là:</p>
+                <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${code}</p>
+                <p>Mã này sẽ hết hạn sau 1 phút 30 giây. Nếu bạn không tạo tài khoản, vui lòng bỏ qua email này.</p>
+            </div>
+        `,
+    });
+};
+
+const issueRegistrationOtp = async (pendingRegistration) => {
+    const code = generateVerificationCode();
+    pendingRegistration.codeHash = await bcrypt.hash(code, 10);
+    pendingRegistration.expiresAt = new Date(Date.now() + REGISTRATION_OTP_TTL);
+    pendingRegistration.attempts = 0;
+    await pendingRegistration.save();
+
+    try {
+        await sendRegistrationOtpEmail(pendingRegistration, code);
+    } catch (error) {
+        await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+        throw error;
+    }
 };
 
 const issueVerificationCode = async (user) => {
@@ -104,7 +138,7 @@ const sendPasswordResetEmail = async (user, code) => {
                 <p>Xin chào ${user.displayName},</p>
                 <p>Mã đặt lại mật khẩu của bạn là:</p>
                 <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${code}</p>
-                <p>Mã này sẽ hết hạn sau 10 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+                <p>Mã này sẽ hết hạn sau 1 phút 30 giây. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
             </div>
         `,
     });
@@ -140,50 +174,33 @@ export const signUp = async (req, res) => {
         }
 
         const duplicateUser = await User.findOne({ $or: [ { username }, { email } ] });
-        if (duplicateUser) { //kiem tra trung username hoac email
-            if (
-                duplicateUser.isEmailVerified === false &&
-                duplicateUser.username === username &&
-                duplicateUser.email === email
-            ) {
-                const latestCode = await getLatestActiveVerificationCode(
-                    duplicateUser._id,
-                    EMAIL_VERIFICATION_PURPOSE,
-                );
-
-                if (!isResendCoolingDown(latestCode)) {
-                    await issueVerificationCode(duplicateUser);
-                }
-
-                return res.status(200).json({
-                    message: 'Mã xác minh đã được gửi đến email.',
-                    email: duplicateUser.email,
-                    requiresVerification: true,
-                });
-            }
-
+        if (duplicateUser) {
             return res
                 .status(409)
-                .json({ message: 'Tên đăng nhập hoặc email đã được sử dụng.' });
-        } 
+                .json({ message: 'Email hoặc tên đăng nhập đã tồn tại.' });
+        }
 
         //Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await User.create({
+        await PendingRegistration.deleteMany({ $or: [ { username }, { email } ] });
+
+        const pendingRegistration = await PendingRegistration.create({
             username,
             email,
             hashedPassword,
             displayName: `${firstName} ${lastName}`,
-            isEmailVerified: false,
+            codeHash: await bcrypt.hash(generateVerificationCode(), 10),
+            expiresAt: new Date(Date.now() + REGISTRATION_OTP_TTL),
         });
 
-        await issueVerificationCode(user);
+        await issueRegistrationOtp(pendingRegistration);
 
         return res.status(201).json({
-            message: 'Tài khoản đã được tạo. Mã xác minh đã được gửi đến email.',
-            email: user.email,
+            message: 'Mã OTP đã được gửi đến email của bạn.',
+            email: pendingRegistration.email,
             requiresVerification: true,
+            expiresIn: 90,
         });
     } catch (error) {
         return handleAuthError(res, error, 'Error during sign up');
@@ -281,61 +298,96 @@ export const verifyEmail = async (req, res) => {
         }
 
         if (!/^\d{6}$/.test(code)) {
-            return res.status(400).json({ message: 'Mã xác minh phải gồm 6 chữ số.' });
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ.' });
         }
 
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            if (existingUser.isEmailVerified !== false) {
+                return res.status(409).json({ message: 'Email hoặc tên đăng nhập đã tồn tại.' });
+            }
+
+            const verificationCode = await VerificationCode.findOne({
+                userId: existingUser._id,
+                email,
+                purpose: EMAIL_VERIFICATION_PURPOSE,
+                consumedAt: null,
+            }).sort({ createdAt: -1 });
+
+            if (!verificationCode || verificationCode.expiresAt < new Date()) {
+                return res.status(400).json({ message: 'Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.' });
+            }
+
+            if (verificationCode.attempts >= MAX_VERIFICATION_ATTEMPTS) {
+                return res.status(429).json({ message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.' });
+            }
+
+            const legacyCodeMatches = await bcrypt.compare(code, verificationCode.codeHash);
+            if (!legacyCodeMatches) {
+                verificationCode.attempts += 1;
+                await verificationCode.save();
+                return res.status(400).json({ message: 'Mã OTP không hợp lệ.' });
+            }
+
+            existingUser.isEmailVerified = true;
+            verificationCode.consumedAt = new Date();
+            await Promise.all([
+                existingUser.save(),
+                verificationCode.save(),
+                VerificationCode.updateMany(
+                    {
+                        userId: existingUser._id,
+                        purpose: EMAIL_VERIFICATION_PURPOSE,
+                        consumedAt: null,
+                        _id: { $ne: verificationCode._id },
+                    },
+                    { consumedAt: new Date() },
+                ),
+            ]);
+
+            return res.status(200).json({ message: 'Xác minh email thành công.' });
         }
 
-        if (user.isEmailVerified !== false) {
-            return res.status(400).json({ message: 'Email đã được xác minh.' });
+        const pendingRegistration = await PendingRegistration.findOne({ email }).sort({ createdAt: -1 });
+        if (!pendingRegistration) {
+            return res.status(400).json({ message: 'Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.' });
         }
 
-        const verificationCode = await VerificationCode.findOne({
-            userId: user._id,
-            email,
-            purpose: EMAIL_VERIFICATION_PURPOSE,
-            consumedAt: null,
-        }).sort({ createdAt: -1 });
-
-        if (!verificationCode) {
-            return res.status(400).json({ message: 'Không tìm thấy mã xác minh. Vui lòng yêu cầu mã mới.' });
+        if (pendingRegistration.expiresAt < new Date()) {
+            await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+            return res.status(400).json({ message: 'Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.' });
         }
 
-        if (verificationCode.expiresAt < new Date()) {
-            return res.status(400).json({ message: 'Mã xác minh đã hết hạn. Vui lòng yêu cầu mã mới.' });
-        }
-
-        if (verificationCode.attempts >= MAX_VERIFICATION_ATTEMPTS) {
+        if (pendingRegistration.attempts >= MAX_VERIFICATION_ATTEMPTS) {
             return res.status(429).json({ message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.' });
         }
 
-        const codeMatches = await bcrypt.compare(code, verificationCode.codeHash);
+        const codeMatches = await bcrypt.compare(code, pendingRegistration.codeHash);
         if (!codeMatches) {
-            verificationCode.attempts += 1;
-            await verificationCode.save();
-            return res.status(400).json({ message: 'Mã xác minh không đúng.' });
+            pendingRegistration.attempts += 1;
+            await pendingRegistration.save();
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ.' });
         }
 
-        user.isEmailVerified = true;
-        verificationCode.consumedAt = new Date();
-        await Promise.all([
-            user.save(),
-            verificationCode.save(),
-            VerificationCode.updateMany(
-                {
-                    userId: user._id,
-                    purpose: EMAIL_VERIFICATION_PURPOSE,
-                    consumedAt: null,
-                    _id: { $ne: verificationCode._id },
-                },
-                { consumedAt: new Date() },
-            ),
-        ]);
+        try {
+            await User.create({
+                username: pendingRegistration.username,
+                email: pendingRegistration.email,
+                hashedPassword: pendingRegistration.hashedPassword,
+                displayName: pendingRegistration.displayName,
+                isEmailVerified: true,
+            });
+        } catch (error) {
+            if (error?.code === 11000) {
+                await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+                return res.status(409).json({ message: 'Email hoặc tên đăng nhập đã tồn tại.' });
+            }
+            throw error;
+        }
 
-        return res.status(200).json({ message: 'Xác minh email thành công.' });
+        await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+
+        return res.status(200).json({ message: 'Xác thực email thành công. Tài khoản của bạn đã được tạo.' });
     } catch (error) {
         return handleAuthError(res, error, 'Error during email verification');
     }
@@ -348,9 +400,34 @@ export const resendVerificationCode = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng nhập email.' });
         }
 
+        const pendingRegistration = await PendingRegistration.findOne({ email }).sort({ createdAt: -1 });
+        if (pendingRegistration) {
+            const duplicateUser = await User.findOne({
+                $or: [
+                    { email: pendingRegistration.email },
+                    { username: pendingRegistration.username },
+                ],
+            });
+            if (duplicateUser) {
+                await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+                return res.status(409).json({ message: 'Email hoặc tên đăng nhập đã tồn tại.' });
+            }
+
+            if (Date.now() - pendingRegistration.updatedAt.getTime() < REGISTRATION_RESEND_COOLDOWN) {
+                return res.status(429).json({ message: 'Vui lòng chờ trước khi yêu cầu mã mới.' });
+            }
+
+            await issueRegistrationOtp(pendingRegistration);
+
+            return res.status(200).json({
+                message: 'Mã OTP mới đã được gửi.',
+                expiresIn: 90,
+            });
+        }
+
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+            return res.status(400).json({ message: 'Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.' });
         }
 
         if (user.isEmailVerified !== false) {
@@ -381,15 +458,25 @@ export const forgotPassword = async (req, res) => {
 
         const user = await User.findOne({ username, email });
         if (!user || user.isBlocked) {
-            return res.status(200).json({ message: PASSWORD_RESET_SUCCESS_MESSAGE });
+            return res
+                .status(400)
+                .json({ success: false, message: 'Tên đăng nhập hoặc email không đúng.' });
         }
 
         const latestCode = await getLatestActiveVerificationCode(user._id, PASSWORD_RESET_PURPOSE);
-        if (!isResendCoolingDown(latestCode)) {
-            await issuePasswordResetCode(user);
+        if (isResendCoolingDown(latestCode)) {
+            return res
+                .status(429)
+                .json({ success: false, message: 'Vui lòng chờ trước khi yêu cầu mã mới.' });
         }
 
-        return res.status(200).json({ message: PASSWORD_RESET_SUCCESS_MESSAGE });
+        await issuePasswordResetCode(user);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Mã OTP đã được gửi đến email của bạn.',
+            expiresIn: 90,
+        });
     } catch (error) {
         return handleAuthError(res, error, 'Error during forgot password request');
     }
@@ -397,12 +484,13 @@ export const forgotPassword = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
     try {
+        const username = normalizeUsername(req.body.username);
         const email = normalizeEmail(req.body.email);
         const code = req.body.code?.trim();
         const { newPassword, confirmNewPassword } = req.body;
 
-        if (!email || !code || !newPassword || !confirmNewPassword) {
-            return res.status(400).json({ message: 'Vui lòng nhập email, mã OTP, mật khẩu mới và xác nhận mật khẩu.' });
+        if (!username || !email || !code || !newPassword || !confirmNewPassword) {
+            return res.status(400).json({ message: 'Vui lòng nhập tên đăng nhập, email, mã OTP, mật khẩu mới và xác nhận mật khẩu.' });
         }
 
         if (!/^\d{6}$/.test(code)) {
@@ -417,7 +505,7 @@ export const resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Mật khẩu mới và xác nhận mật khẩu không khớp.' });
         }
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ username, email });
         if (!user || user.isBlocked) {
             return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn.' });
         }

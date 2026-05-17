@@ -1,5 +1,6 @@
 import { NavLink } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
+import UserAvatar from "@/components/common/UserAvatar";
 
 interface SidebarProps {
     mode?: "admin" | "user";
@@ -33,9 +34,7 @@ const Sidebar = ({ mode = "user" }: SidebarProps) => {
                 {/* User info */}
                 <div className="p-4 border-b border-border bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-950/30 dark:to-transparent">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] flex items-center justify-center text-white font-bold shrink-0">
-                            {(user?.displayName || user?.username)?.[0]?.toUpperCase() ?? "U"}
-                        </div>
+                        <UserAvatar user={user} className="w-10 h-10" />
                         <div className="min-w-0">
                             <p className="font-bold text-sm text-foreground truncate">
                                 {user?.displayName || user?.username}

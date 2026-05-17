@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Label } from "../ui/label";
 import { useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useState } from "react";
 
 const signUpSchema = z.object({
   firstname: z.string().min(1, "Tên bắt buộc phải có"),
@@ -22,6 +23,7 @@ type SignUpFormValues = z.infer<typeof signUpSchema>;
 export function SignupForm({ className, ...props }: React.ComponentProps<"div">) {
   const { signUp } = useAuthStore();
   const navigate = useNavigate();
+  const [serverError, setServerError] = useState("");
   const {
     register,
     handleSubmit,
@@ -33,8 +35,23 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
   const onSubmit = async (data: SignUpFormValues) => {
     const { firstname, lastname, username, email, password } = data;
 
-    const response = await signUp(username, password, email, firstname, lastname);
-    navigate(`/verify-email?email=${encodeURIComponent(response.email || email)}`);
+    setServerError("");
+
+    try {
+      const response = await signUp(username, password, email, firstname, lastname);
+      const otpEmail = response.email || email;
+      const nextExpiresAt = new Date().getTime() + (response.expiresIn || 90) * 1000;
+      sessionStorage.setItem("registrationOtpEmail", otpEmail.toLowerCase());
+      sessionStorage.setItem(
+        `registrationOtpExpiresAt:${otpEmail.toLowerCase()}`,
+        String(nextExpiresAt)
+      );
+      navigate(`/verify-email?email=${encodeURIComponent(otpEmail)}`);
+    } catch (error) {
+      const maybeError = error as { response?: { data?: { message?: unknown } } };
+      const message = maybeError.response?.data?.message;
+      setServerError(typeof message === "string" ? message : "Đăng ký thất bại. Vui lòng thử lại.");
+    }
   };
 
   return (
@@ -119,6 +136,8 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 Tạo tài khoản
               </Button>
+
+              {serverError && <p className="text-destructive text-sm">{serverError}</p>}
 
               <div className="text-center text-sm">
                 Đã có tài khoản?{" "}

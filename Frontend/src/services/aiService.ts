@@ -7,14 +7,24 @@ export interface ChatMessage {
     timestamp: string;
 }
 
-export interface ChatPayload {
-    message: string;
-    history?: ChatMessage[];
+interface ChatbotResponse {
+    success?: boolean;
+    reply?: string;
+    data?: {
+        reply?: string;
+    };
+    message?: string;
 }
 
 export const aiService = {
-    sendMessage: async (payload: ChatPayload): Promise<string> => {
-        const res = await api.post<ApiResponse<{ reply: string }>>("/ai/chat", payload);
-        return res.data.data.reply;
+    sendMessage: async (message: string): Promise<string> => {
+        const res = await api.post<ApiResponse<{ reply: string }> & ChatbotResponse>("/chatbot/message", { message });
+        const reply = res.data.reply || res.data.data?.reply;
+
+        if (!reply) {
+            throw new Error(res.data.message || "Không thể gửi tin nhắn. Vui lòng thử lại.");
+        }
+
+        return reply;
     },
 };

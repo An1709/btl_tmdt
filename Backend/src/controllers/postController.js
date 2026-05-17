@@ -1,4 +1,6 @@
 import Post from '../models/Post.js';
+import Comment from '../models/Comment.js';
+import mongoose from 'mongoose';
 
 // Simple slug generator (no external deps)
 const makeSlug = (str) =>
@@ -24,7 +26,61 @@ const normalizeTags = (tags) => {
 
 const buildExcerpt = (content) => content.replace(/<[^>]+>/g, '').slice(0, 160);
 
-const mapPost = (post, fallbackImage) => ({
+const COMMENT_USER_SELECT = 'username displayName avatarUrl avatar photoURL image';
+
+const mapComment = (comment) => {
+    const user = comment.user || {};
+    const displayName = user.displayName || user.username || 'Người dùng';
+
+    return {
+        _id: comment._id,
+        post: comment.post,
+        user: user?._id ? {
+            _id: user._id,
+            username: user.username,
+            displayName,
+            avatarUrl: user.avatarUrl || user.avatar || user.photoURL || user.image || '',
+        } : null,
+        userId: user?._id || comment.user,
+        username: displayName,
+        avatarUrl: user.avatarUrl || user.avatar || user.photoURL || user.image || '',
+        rating: Number(comment.rating || 0),
+        content: comment.content,
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+    };
+};
+
+const getCommentSummary = async (postIds) => {
+    const ids = Array.isArray(postIds) ? postIds : [postIds];
+    const summary = await Comment.aggregate([
+        { $match: { post: { $in: ids } } },
+        {
+            $group: {
+                _id: '$post',
+                commentCount: { $sum: 1 },
+                averageRating: { $avg: '$rating' },
+            },
+        },
+    ]);
+
+    return new Map(summary.map((item) => [
+        String(item._id),
+        {
+            commentCount: item.commentCount,
+            reviewCount: item.commentCount,
+            averageRating: item.averageRating || 0,
+        },
+    ]));
+};
+
+const getPostSummary = (post, summaryMap) => summaryMap?.get(String(post._id)) || {
+    commentCount: 0,
+    reviewCount: 0,
+    averageRating: 0,
+};
+
+const mapPost = (post, fallbackImage, summary = {}, comments = []) => ({
     _id: post._id,
     title: post.title,
     slug: post.slug,
@@ -33,7 +89,10 @@ const mapPost = (post, fallbackImage) => ({
     coverImage: post.thumbnail || fallbackImage,
     author: post.author,
     tags: post.tags || [],
-    comments: [],
+    comments,
+    averageRating: summary.averageRating || 0,
+    commentCount: summary.commentCount || 0,
+    reviewCount: summary.reviewCount || summary.commentCount || 0,
     viewCount: post.views || 0,
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
@@ -84,7 +143,12 @@ export const getPosts = async (req, res) => {
         ]);
 
         // Map to shape expected by frontend
-        const mapped = posts.map((p) => mapPost(p, `https://images.unsplash.com/photo-${p._id}?w=800&h=450&fit=crop`));
+        const summaryMap = await getCommentSummary(posts.map((p) => p._id));
+        const mapped = posts.map((p) => mapPost(
+            p,
+            `https://images.unsplash.com/photo-${p._id}?w=800&h=450&fit=crop`,
+            getPostSummary(p, summaryMap),
+        ));
 
         const totalPages = Math.ceil(total / limit);
         return res.json({
@@ -111,10 +175,24 @@ export const getPostBySlug = async (req, res) => {
         // Increment view count
         await Post.findByIdAndUpdate(post._id, { $inc: { views: 1 } });
 
+        const comments = await Comment.find({ post: post._id })
+            .populate('user', COMMENT_USER_SELECT)
+            .sort({ createdAt: -1 })
+            .lean();
+        const commentCount = comments.length;
+        const averageRating = commentCount
+            ? comments.reduce((sum, comment) => sum + Number(comment.rating || 0), 0) / commentCount
+            : 0;
+
         return res.json({
             success: true,
             data: {
-                ...mapPost(post, 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800&h=450&fit=crop'),
+                ...mapPost(
+                    post,
+                    'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800&h=450&fit=crop',
+                    { averageRating, commentCount, reviewCount: commentCount },
+                    comments.map(mapComment),
+                ),
                 viewCount: (post.views || 0) + 1,
             },
         });
@@ -207,6 +285,118 @@ export const updatePost = async (req, res) => {
 // @desc    Xóa bài viết
 // @route   DELETE /api/posts/:id
 // @access  Private (Admin)
+const getPostCommentStats = async (postId) => {
+    const comments = await Comment.find({ post: postId }).select('rating').lean();
+    const commentCount = comments.length;
+    const averageRating = commentCount
+        ? comments.reduce((sum, comment) => sum + Number(comment.rating || 0), 0) / commentCount
+        : 0;
+
+    return { averageRating, commentCount, reviewCount: commentCount };
+};
+
+const validateCommentPayload = ({ rating, content }) => {
+    const numericRating = Number(rating);
+
+    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+        return { message: 'Vui lòng chọn số sao.', numericRating: 0 };
+    }
+
+    if (!content || !String(content).trim()) {
+        return { message: 'Vui lòng nhập nội dung bình luận.', numericRating };
+    }
+
+    return { message: '', numericRating };
+};
+
+// @desc    Them/cap nhat binh luan va danh gia bai viet
+// @route   POST /api/posts/:id/comments
+// @access  Private
+export const upsertPostComment = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(404).json({ success: false, message: 'Bài viết không tồn tại.' });
+        }
+
+        const { message, numericRating } = validateCommentPayload(req.body);
+        if (message) {
+            return res.status(400).json({ success: false, message });
+        }
+
+        const post = await Post.findOne({ _id: req.params.id, type: 'blog' }).select('_id').lean();
+        if (!post) {
+            return res.status(404).json({ success: false, message: 'Bài viết không tồn tại.' });
+        }
+
+        const content = String(req.body.content).trim();
+        let comment = await Comment.findOne({ post: post._id, user: req.user._id });
+        const statusCode = comment ? 200 : 201;
+
+        if (comment) {
+            comment.rating = numericRating;
+            comment.content = content;
+            await comment.save();
+        } else {
+            comment = await Comment.create({
+                post: post._id,
+                user: req.user._id,
+                rating: numericRating,
+                content,
+            });
+        }
+
+        await comment.populate('user', COMMENT_USER_SELECT);
+        const stats = await getPostCommentStats(post._id);
+
+        return res.status(statusCode).json({
+            success: true,
+            message: 'Cảm ơn bạn đã gửi đánh giá.',
+            data: {
+                comment: mapComment(comment),
+                ...stats,
+            },
+        });
+    } catch (err) {
+        console.error('Error in upsertPostComment:', err);
+        return res.status(500).json({ success: false, message: 'Không thể gửi bình luận. Vui lòng thử lại sau.' });
+    }
+};
+
+// @desc    Xoa binh luan bai viet
+// @route   DELETE /api/posts/:id/comments/:commentId
+// @access  Private (owner/admin)
+export const deletePostComment = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.commentId)) {
+            return res.status(404).json({ success: false, message: 'Bình luận không tồn tại.' });
+        }
+
+        const comment = await Comment.findOne({ _id: req.params.commentId, post: req.params.id });
+        if (!comment) {
+            return res.status(404).json({ success: false, message: 'Bình luận không tồn tại.' });
+        }
+
+        const isOwner = String(comment.user) === String(req.user._id);
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa bình luận này.' });
+        }
+
+        await comment.deleteOne();
+        const stats = await getPostCommentStats(req.params.id);
+
+        return res.json({
+            success: true,
+            message: 'Đã xóa bình luận.',
+            data: stats,
+        });
+    } catch (err) {
+        console.error('Error in deletePostComment:', err);
+        return res.status(500).json({ success: false, message: 'Không thể xóa bình luận. Vui lòng thử lại sau.' });
+    }
+};
+
 export const deletePost = async (req, res) => {
     try {
         const post = await Post.findByIdAndDelete(req.params.id);

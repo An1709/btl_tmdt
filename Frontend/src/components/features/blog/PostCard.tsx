@@ -9,6 +9,8 @@ interface PostCardProps {
 const PostCard = ({ post }: PostCardProps) => {
     const tags = Array.isArray(post.tags) ? post.tags : [];
     const authorName = post.author?.displayName || post.author?.username || "PetMart";
+    const averageRating = Number(post.averageRating ?? 0);
+    const commentCount = Number(post.commentCount ?? post.reviewCount ?? post.comments?.length ?? 0);
 
     return (
         <article className="pet-card flex flex-col group overflow-hidden">
@@ -49,6 +51,8 @@ const PostCard = ({ post }: PostCardProps) => {
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span>👁 {post.viewCount}</span>
+                        <span>⭐ {averageRating > 0 ? averageRating.toFixed(1) : "0.0"}</span>
+                        <span>💬 {commentCount}</span>
                         <span>{formatRelativeTime(post.createdAt)}</span>
                     </div>
                 </div>

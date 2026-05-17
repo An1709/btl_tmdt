@@ -11,10 +11,39 @@ export interface PostPayload {
     type?: "blog" | "forum_topic";
 }
 
+export interface BlogCommentPayload {
+    rating: number;
+    content: string;
+}
+
+export interface BlogCommentResponse {
+    comment: Comment;
+    averageRating: number;
+    commentCount: number;
+    reviewCount: number;
+}
+
 const fallbackAuthor = {
     _id: "",
     username: "petmart",
     displayName: "PetMart",
+};
+
+const normalizeComment = (comment: Comment): Comment => {
+    const user = comment.user ?? null;
+    const username = comment.username || user?.displayName || user?.username || "Người dùng";
+    const avatarUrl = comment.avatarUrl || user?.avatarUrl || "";
+
+    return {
+        ...comment,
+        user,
+        userId: String(comment.userId || user?._id || ""),
+        username,
+        avatarUrl,
+        rating: Number(comment.rating ?? 0),
+        content: comment.content ?? "",
+        createdAt: comment.createdAt,
+    };
 };
 
 const normalizePost = (post: Post): Post => ({
@@ -23,7 +52,10 @@ const normalizePost = (post: Post): Post => ({
     coverImage: post.coverImage ?? "",
     author: post.author ?? fallbackAuthor,
     tags: Array.isArray(post.tags) ? post.tags : [],
-    comments: Array.isArray(post.comments) ? post.comments : [],
+    comments: Array.isArray(post.comments) ? post.comments.map(normalizeComment) : [],
+    averageRating: Number(post.averageRating ?? 0),
+    commentCount: Number(post.commentCount ?? post.comments?.length ?? 0),
+    reviewCount: Number(post.reviewCount ?? post.commentCount ?? post.comments?.length ?? 0),
     viewCount: Number(post.viewCount ?? 0),
 });
 
@@ -63,9 +95,15 @@ export const postService = {
         await api.delete(`/posts/${id}`);
     },
 
-    addComment: async (postId: string, content: string): Promise<Comment> => {
-        const res = await api.post<ApiResponse<Comment>>(`/posts/${postId}/comments`, { content });
-        return res.data.data;
+    addComment: async (postId: string, payload: BlogCommentPayload): Promise<BlogCommentResponse> => {
+        const res = await api.post<ApiResponse<BlogCommentResponse>>(`/posts/${postId}/comments`, payload);
+        return {
+            ...res.data.data,
+            comment: normalizeComment(res.data.data.comment),
+            averageRating: Number(res.data.data.averageRating ?? 0),
+            commentCount: Number(res.data.data.commentCount ?? 0),
+            reviewCount: Number(res.data.data.reviewCount ?? res.data.data.commentCount ?? 0),
+        };
     },
 
     deleteComment: async (postId: string, commentId: string): Promise<void> => {

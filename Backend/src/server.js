@@ -19,6 +19,7 @@ import couponRoutes from './routes/couponRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import warrantyRoutes from './routes/warrantyRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import newsletterRoutes from './routes/newsletterRoutes.js';
 
 
 // Cấu hình
@@ -61,11 +62,13 @@ app.use('/api/coupons', couponRoutes);
 
 // Features & Content
 app.use('/api/ai', aiRoutes);
+app.use('/api/chatbot', aiRoutes);
 app.use('/api/collection', collectionRoutes); // Yêu thích
 app.use('/api/collections', collectionRoutes); // Frontend alias for wishlist
 app.use('/api/posts', postRoutes);            // Blog & Forum
 app.use('/api/warranty', warrantyRoutes);     // Bảo hành
 app.use('/api/reviews', reviewRoutes);        // Đánh giá
+app.use('/api/newsletter', newsletterRoutes);
 
 // Default Route (Kiểm tra server sống hay chết)
 app.get('/', (req, res) => {

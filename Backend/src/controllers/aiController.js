@@ -1,34 +1,32 @@
-import OpenAI from 'openai';
-import Product from '../models/Product.js';
+import { generateChatbotReply, validateChatMessage } from '../services/chatbotService.js';
 
-// Khởi tạo OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
-// @desc    Chat với Bot
-// @route   POST /api/ai/chat
+// @desc    Rule-based customer support chatbot
+// @route   POST /api/chatbot/message
 export const chatWithAI = async (req, res) => {
-    const { message } = req.body;
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    const validationError = validateChatMessage(message);
+
+    if (validationError) {
+        return res.status(400).json({
+            success: false,
+            message: validationError,
+        });
+    }
 
     try {
-        // (Optional) Lấy 5 sản phẩm mới nhất để làm context cho AI
-        const products = await Product.find().limit(5).select('name price');
-        const productContext = products.map(p => `${p.name} giá ${p.price}đ`).join(', ');
-
-        const systemPrompt = `Bạn là trợ lý ảo của PetShop. Hãy tư vấn thân thiện. Cửa hàng đang có các sản phẩm: ${productContext}.`;
-
-        const completion = await openai.chat.completions.create({
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: message }
-            ],
-            model: "gpt-3.5-turbo",
+        const { status, body } = await generateChatbotReply({
+            message,
+            history: req.body?.history,
+            conversationId: req.body?.conversationId || req.body?.sessionId,
+            user: req.user,
         });
 
-        res.json({ reply: completion.choices[0].message.content });
+        return res.status(status).json(body);
     } catch (error) {
-        console.error("OpenAI Error:", error);
-        res.status(500).json({ message: "AI đang bận, vui lòng thử lại sau" });
+        console.error('Chatbot request failed:', error?.name || 'UnknownError');
+        return res.status(503).json({
+            success: false,
+            message: 'PetBot đang bận. Vui lòng thử lại sau.',
+        });
     }
 };

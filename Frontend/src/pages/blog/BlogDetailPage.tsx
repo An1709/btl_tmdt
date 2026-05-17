@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
-import { postService } from "@/services/postService";
-import type { Post, Comment } from "@/types/post";
+import { postService, type BlogCommentResponse } from "@/services/postService";
+import type { Post } from "@/types/post";
 import CommentSection from "@/components/features/blog/CommentSection";
 import Loading from "@/components/common/Loading";
 import { formatDate } from "@/utils/format";
@@ -48,8 +48,22 @@ const BlogDetailPage = () => {
         };
     }, [slug]);
 
-    const handleCommentAdded = (comment: Comment) => {
-        setPost((p) => p ? { ...p, comments: [...p.comments, comment] } : p);
+    const handleCommentAdded = (response: BlogCommentResponse) => {
+        setPost((p) => {
+            if (!p) return p;
+
+            const nextComments = p.comments.some((comment) => comment._id === response.comment._id)
+                ? p.comments.map((comment) => comment._id === response.comment._id ? response.comment : comment)
+                : [response.comment, ...p.comments];
+
+            return {
+                ...p,
+                comments: nextComments,
+                averageRating: response.averageRating,
+                commentCount: response.commentCount,
+                reviewCount: response.reviewCount,
+            };
+        });
     };
 
     if (loading) return <Loading fullPage />;
@@ -72,6 +86,8 @@ const BlogDetailPage = () => {
 
     const tags = Array.isArray(post.tags) ? post.tags : [];
     const comments = Array.isArray(post.comments) ? post.comments : [];
+    const commentCount = post.commentCount ?? comments.length;
+    const averageRating = Number(post.averageRating ?? 0);
     const authorName = post.author?.displayName || post.author?.username || "PetMart";
 
     return (
@@ -101,7 +117,8 @@ const BlogDetailPage = () => {
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span>{formatDate(post.createdAt)}</span>
                         <span>👁 {post.viewCount} lượt xem</span>
-                        <span>💬 {comments.length} bình luận</span>
+                        <span>💬 {commentCount} bình luận</span>
+                        <span>⭐ {averageRating > 0 ? averageRating.toFixed(1) : "0.0"}/5</span>
                     </div>
                 </div>
             </div>
@@ -123,7 +140,13 @@ const BlogDetailPage = () => {
                 dangerouslySetInnerHTML={{ __html: post.content }}
             />
 
-            <CommentSection postId={post._id} comments={comments} onCommentAdded={handleCommentAdded} />
+            <CommentSection
+                postId={post._id}
+                comments={comments}
+                averageRating={averageRating}
+                commentCount={commentCount}
+                onCommentAdded={handleCommentAdded}
+            />
         </div>
     );
 };

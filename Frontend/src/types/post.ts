@@ -3,8 +3,16 @@ export interface Comment {
     userId: string;
     username: string;
     avatarUrl?: string;
+    user?: {
+        _id: string;
+        username?: string;
+        displayName?: string;
+        avatarUrl?: string;
+    } | null;
+    rating: number;
     content: string;
     createdAt: string;
+    updatedAt?: string;
 }
 
 export interface Post {
@@ -22,6 +30,9 @@ export interface Post {
     };
     tags: string[];
     comments: Comment[];
+    averageRating: number;
+    commentCount: number;
+    reviewCount: number;
     viewCount: number;
     createdAt: string;
     updatedAt: string;

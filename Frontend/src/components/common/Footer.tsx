@@ -1,7 +1,19 @@
+import { useState, type FormEvent, type MouseEvent } from "react";
 import { Link } from "react-router";
+import { newsletterService } from "@/services/newsletterService";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const getNewsletterError = (error: unknown) =>
+    (error as { response?: { data?: { message?: string } } }).response?.data?.message
+    || "Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.";
 
 const Footer = () => {
     const year = new Date().getFullYear();
+    const [newsletterEmail, setNewsletterEmail] = useState("");
+    const [newsletterMessage, setNewsletterMessage] = useState("");
+    const [newsletterStatus, setNewsletterStatus] = useState<"success" | "error" | "">("");
+    const [newsletterLoading, setNewsletterLoading] = useState(false);
 
     const shopLinks = [
         { label: "Chó", to: "/shop?cat=dog" },
@@ -57,6 +69,62 @@ const Footer = () => {
             ),
         },
     ];
+
+    const validateNewsletterEmail = () => {
+        const email = newsletterEmail.trim();
+
+        if (!email) {
+            setNewsletterStatus("error");
+            setNewsletterMessage("Vui lòng nhập email để nhận mã ưu đãi.");
+            return "";
+        }
+
+        if (!EMAIL_PATTERN.test(email)) {
+            setNewsletterStatus("error");
+            setNewsletterMessage("Email không hợp lệ.");
+            return "";
+        }
+
+        return email;
+    };
+
+    const sendNewsletterCoupon = async () => {
+        const email = validateNewsletterEmail();
+        if (!email) return false;
+
+        setNewsletterLoading(true);
+        setNewsletterMessage("");
+        setNewsletterStatus("");
+
+        try {
+            const response = await newsletterService.subscribe(email);
+            setNewsletterStatus("success");
+            setNewsletterMessage(response.message || "Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.");
+            return true;
+        } catch (error) {
+            const status = (error as { response?: { status?: number } }).response?.status;
+            setNewsletterStatus(status === 409 ? "success" : "error");
+            setNewsletterMessage(getNewsletterError(error));
+            return status === 409;
+        } finally {
+            setNewsletterLoading(false);
+        }
+    };
+
+    const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        await sendNewsletterCoupon();
+    };
+
+    const handleSocialClick = async (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+        event.preventDefault();
+        if (newsletterLoading) return;
+
+        const shouldOpenSocial = await sendNewsletterCoupon();
+        if (shouldOpenSocial) {
+            window.open(href, "_blank", "noopener,noreferrer");
+        }
+    };
 
     return (
         <footer className="bg-foreground dark:bg-card text-white/90 mt-16">
@@ -133,6 +201,7 @@ const Footer = () => {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     aria-label={s.label}
+                                    onClick={(event) => handleSocialClick(event, s.href)}
                                     className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center
                              hover:bg-[var(--pet-coral)] hover:-translate-y-1 transition-all duration-200"
                                 >
@@ -143,20 +212,38 @@ const Footer = () => {
                         {/* Newsletter mini */}
                         <div className="mt-2">
                             <p className="text-sm text-white/60 mb-2">Nhận ưu đãi mới nhất:</p>
-                            <form className="flex gap-2" onSubmit={(e) => e.preventDefault()}>
+                            <form className="flex gap-2" onSubmit={handleNewsletterSubmit}>
                                 <input
                                     type="email"
                                     placeholder="Email của bạn"
+                                    value={newsletterEmail}
+                                    onChange={(event) => {
+                                        setNewsletterEmail(event.target.value);
+                                        if (newsletterMessage) {
+                                            setNewsletterMessage("");
+                                            setNewsletterStatus("");
+                                        }
+                                    }}
+                                    disabled={newsletterLoading}
                                     className="flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-sm text-white placeholder:text-white/40
                              focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/50 min-w-0"
                                 />
                                 <button
                                     type="submit"
+                                    disabled={newsletterLoading}
                                     className="px-3 py-2 rounded-xl bg-[var(--pet-coral)] text-white text-sm font-semibold hover:opacity-90 transition-all shrink-0"
                                 >
-                                    OK
+                                    {newsletterLoading ? "..." : "OK"}
                                 </button>
                             </form>
+                            {newsletterMessage && (
+                                <p
+                                    className={`mt-2 text-xs leading-relaxed ${newsletterStatus === "success" ? "text-emerald-300" : "text-red-300"}`}
+                                    role="status"
+                                >
+                                    {newsletterMessage}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>

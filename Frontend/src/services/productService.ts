@@ -36,6 +36,21 @@ export interface ProductPayload {
     specifications?: Record<string, string>;
 }
 
+export interface ProductSuggestion {
+    id: string;
+    name: string;
+    slug?: string;
+    price: number;
+    originalPrice?: number;
+    image: string;
+    images: string[];
+    category: ProductCategory;
+    categoryName: string;
+    stock: number;
+    inStock: boolean;
+    rating: number;
+}
+
 // ── Adapter: normalise MongoDB document → frontend Product ─────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const mapProduct = (raw: any): Product => ({
@@ -69,6 +84,29 @@ export const mapProduct = (raw: any): Product => ({
     stock: raw.stock ?? 0,
     reviews: Array.isArray(raw.reviews) ? raw.reviews : [],
 });
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapProductSuggestion = (raw: any): ProductSuggestion => {
+    const category =
+        typeof raw.category === "object" && raw.category !== null
+            ? raw.category
+            : undefined;
+
+    return {
+        id: raw._id ?? raw.id,
+        name: raw.name ?? "",
+        slug: raw.slug ?? undefined,
+        price: raw.price ?? 0,
+        originalPrice: raw.originalPrice ?? undefined,
+        image: Array.isArray(raw.images) && raw.images.length > 0 ? raw.images[0] : (raw.image ?? ""),
+        images: Array.isArray(raw.images) ? raw.images : [],
+        category: (category?.slug ?? raw.category ?? "accessory") as ProductCategory,
+        categoryName: category?.name ?? category?.slug ?? "Sản phẩm",
+        stock: raw.stock ?? 0,
+        inStock: (raw.stock ?? 0) > 0,
+        rating: raw.averageRating ?? raw.rating ?? 0,
+    };
+};
 
 // ── Backend response type (raw, before mapping) ────────────────────────────
 interface RawProductListResponse {
@@ -131,6 +169,39 @@ export const productService = {
     getById: async (id: string): Promise<Product> => {
         const res = await api.get<RawSingleResponse>(`/products/${id}`);
         return mapProduct(res.data);
+    },
+
+    getFeatured: async (limit = 8): Promise<Product[]> => {
+        const params = new URLSearchParams({ limit: String(limit) });
+        const res = await api.get<{ products: unknown[] }>(`/products/featured?${params.toString()}`);
+        return (res.data.products ?? []).map(mapProduct);
+    },
+
+    getPersonalizedRecommendations: async (limit = 8): Promise<Product[]> => {
+        const params = new URLSearchParams({ limit: String(limit) });
+        const res = await api.get<{ products: unknown[] }>(`/products/recommendations/personalized?${params.toString()}`);
+        return (res.data.products ?? []).map(mapProduct);
+    },
+
+    getRecommendations: async (id: string, limit = 8): Promise<Product[]> => {
+        const params = new URLSearchParams({ limit: String(limit) });
+        const res = await api.get<{ products: unknown[] }>(`/products/${id}/recommendations?${params.toString()}`);
+        return (res.data.products ?? []).map(mapProduct);
+    },
+
+    getComboSuggestions: async (id: string, limit = 4): Promise<Product[]> => {
+        const params = new URLSearchParams({ limit: String(limit) });
+        const res = await api.get<{ products: unknown[] }>(`/products/${id}/combo-suggestions?${params.toString()}`);
+        return (res.data.products ?? []).map(mapProduct);
+    },
+
+    getSuggestions: async (query: string, limit = 6, signal?: AbortSignal): Promise<ProductSuggestion[]> => {
+        const params = new URLSearchParams({
+            q: query,
+            limit: String(limit),
+        });
+        const res = await api.get<{ products: unknown[] }>(`/products/search/suggestions?${params.toString()}`, { signal });
+        return (res.data.products ?? []).map(mapProductSuggestion);
     },
 
     create: async (data: ProductPayload): Promise<Product> => {

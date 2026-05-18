@@ -37,6 +37,18 @@ const orderSchema = new mongoose.Schema({
     paidAt: { type: Date },
     isDelivered: { type: Boolean, default: false },
     deliveredAt: { type: Date },
+    loyaltyPointsAwarded: {
+        type: Boolean,
+        default: false
+    },
+    loyaltyPoints: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    loyaltyAwardedAt: {
+        type: Date
+    },
     status: { 
         type: String, 
         enum: ['Pending', 'Processing', 'Shipping', 'Delivered', 'Cancelled'],
@@ -67,6 +79,30 @@ const orderSchema = new mongoose.Schema({
         trim: true,
         maxlength: 500
     },
+    statusHistory: [{
+        status: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        note: {
+            type: String,
+            trim: true,
+            maxlength: 500
+        },
+        updatedAt: {
+            type: Date,
+            default: Date.now
+        },
+        updatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        updatedByRole: {
+            type: String,
+            trim: true
+        }
+    }],
     coupon: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' }
 
 }, { timestamps: true });

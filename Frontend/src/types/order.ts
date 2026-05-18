@@ -9,6 +9,14 @@ export interface OrderItem {
     image?: string;
 }
 
+export interface OrderStatusHistoryItem {
+    status: OrderStatus | "Created" | "CancelRequested" | "CancelRejected";
+    note?: string;
+    updatedAt?: string;
+    updatedBy?: string;
+    updatedByRole?: string;
+}
+
 export interface ShippingAddress {
     fullName?: string;  // stored by frontend only, not in backend model
     address: string;
@@ -31,6 +39,9 @@ export interface Order {
     paidAt?: string;
     isDelivered: boolean;
     deliveredAt?: string;
+    loyaltyPointsAwarded?: boolean;
+    loyaltyPoints?: number;
+    loyaltyAwardedAt?: string;
     status: OrderStatus;
     cancelRequested?: boolean;
     cancelReason?: string;
@@ -38,6 +49,7 @@ export interface Order {
     cancelStatus?: "none" | "pending" | "approved" | "rejected";
     cancelResolvedAt?: string;
     cancelRejectionReason?: string;
+    statusHistory?: OrderStatusHistoryItem[];
     coupon?: string;
     createdAt: string;
     updatedAt: string;

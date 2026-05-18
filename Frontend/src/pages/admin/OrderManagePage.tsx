@@ -5,6 +5,7 @@ import DataTable, { type Column } from "@/components/features/admin/DataTable";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { ORDER_STATUS_LABELS } from "@/utils/constants";
 import { toast } from "sonner";
+import OrderStatusTimeline from "@/components/features/order/OrderStatusTimeline";
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
     Pending: "bg-amber-100 text-amber-700",
@@ -112,6 +113,24 @@ const OrderManagePage = () => {
                 ) : (
                     <span className="text-xs text-muted-foreground">Không có</span>
                 )
+            )
+        },
+        {
+            key: "loyalty", header: "Điểm", render: (o) => (
+                o.loyaltyPointsAwarded ? (
+                    <span className="text-xs font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700">
+                        +{o.loyaltyPoints ?? 0} điểm
+                    </span>
+                ) : (
+                    <span className="text-xs text-muted-foreground">Chưa cộng</span>
+                )
+            )
+        },
+        {
+            key: "timeline", header: "Lịch sử đơn hàng", render: (o) => (
+                <div className="min-w-64 max-w-80">
+                    <OrderStatusTimeline order={o} compact />
+                </div>
             )
         },
     ];

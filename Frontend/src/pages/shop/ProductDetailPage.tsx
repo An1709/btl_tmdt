@@ -6,6 +6,7 @@ import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { formatCurrency } from "@/utils/format";
 import ProductReviews from "@/components/features/product/ProductReviews";
+import ProductCard from "@/components/features/product/ProductCard";
 import { toast } from "sonner";
 import { collectionService } from "@/services/collectionService";
 
@@ -35,6 +36,7 @@ const DetailSkeleton = () => (
 const ProductDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const addItem = useCartStore((s) => s.addItem);
+    const addCombo = useCartStore((s) => s.addCombo);
     const { user } = useAuthStore();
     const navigate = useNavigate();
 
@@ -45,6 +47,14 @@ const ProductDetailPage = () => {
     const [added, setAdded] = useState(false);
     const [wishlisted, setWishlisted] = useState(false);
     const [updatingWishlist, setUpdatingWishlist] = useState(false);
+    const [recommendations, setRecommendations] = useState<Product[]>([]);
+    const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+    const [recommendationsError, setRecommendationsError] = useState("");
+    const [comboProducts, setComboProducts] = useState<Product[]>([]);
+    const [selectedComboIds, setSelectedComboIds] = useState<Set<string>>(new Set());
+    const [comboLoading, setComboLoading] = useState(false);
+    const [comboError, setComboError] = useState("");
+    const [addingCombo, setAddingCombo] = useState(false);
 
     const loadProduct = useCallback(() => {
         if (!id) return Promise.resolve();
@@ -95,6 +105,67 @@ const ProductDetailPage = () => {
 
         return () => { cancelled = true; };
     }, [product, user]);
+
+    useEffect(() => {
+        if (!id) return;
+        let cancelled = false;
+
+        void Promise.resolve().then(() => {
+            if (cancelled) return;
+            setRecommendations([]);
+            setRecommendationsError("");
+            setRecommendationsLoading(true);
+
+            productService.getRecommendations(id, 8)
+                .then((items) => {
+                    if (!cancelled) setRecommendations(items);
+                })
+                .catch(() => {
+                    if (!cancelled) {
+                        setRecommendations([]);
+                        setRecommendationsError("Không thể tải sản phẩm liên quan.");
+                    }
+                })
+                .finally(() => {
+                    if (!cancelled) setRecommendationsLoading(false);
+                });
+        });
+
+        return () => { cancelled = true; };
+    }, [id]);
+
+    useEffect(() => {
+        if (!id) return;
+        let cancelled = false;
+
+        void Promise.resolve().then(() => {
+            if (cancelled) return;
+            setComboProducts([]);
+            setSelectedComboIds(new Set());
+            setComboError("");
+            setComboLoading(true);
+
+            productService.getComboSuggestions(id, 4)
+                .then((items) => {
+                    if (!cancelled) {
+                        const inStockItems = items.filter((item) => item.inStock);
+                        setComboProducts(inStockItems);
+                        setSelectedComboIds(new Set(inStockItems.map((item) => item.id)));
+                    }
+                })
+                .catch(() => {
+                    if (!cancelled) {
+                        setComboProducts([]);
+                        setComboError("Không thể tải sản phẩm mua kèm.");
+                    }
+                })
+                .finally(() => {
+                    if (!cancelled) setComboLoading(false);
+                });
+        });
+
+        return () => { cancelled = true; };
+    }, [id]);
 
     if (loading) return <DetailSkeleton />;
 
@@ -153,9 +224,54 @@ const ProductDetailPage = () => {
         }
     };
 
+    const toggleComboProduct = (productId: string) => {
+        setSelectedComboIds((current) => {
+            const next = new Set(current);
+            if (next.has(productId)) {
+                next.delete(productId);
+            } else {
+                next.add(productId);
+            }
+            return next;
+        });
+    };
+
+    const handleAddCombo = async () => {
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để thêm combo vào giỏ hàng.");
+            navigate("/signin");
+            return;
+        }
+
+        if (!product.inStock) {
+            toast.error("Sản phẩm hiện tại đã hết hàng.");
+            return;
+        }
+
+        const selectedProducts = comboProducts.filter((item) => selectedComboIds.has(item.id) && item.inStock);
+        const comboItems = [
+            { product, quantity: qty },
+            ...selectedProducts.map((item) => ({ product: item, quantity: 1 })),
+        ];
+
+        setAddingCombo(true);
+        try {
+            await addCombo(comboItems);
+            toast.success("Đã thêm combo vào giỏ hàng.");
+        } catch {
+            toast.error("Không thể thêm combo vào giỏ hàng. Vui lòng thử lại.");
+        } finally {
+            setAddingCombo(false);
+        }
+    };
+
     const discount = product.originalPrice
         ? Math.round((1 - product.price / product.originalPrice) * 100)
         : 0;
+    const visibleRecommendations = recommendations.filter((item) => item.id !== product.id);
+    const visibleComboProducts = comboProducts.filter((item) => item.id !== product.id);
+    const selectedComboProducts = visibleComboProducts.filter((item) => selectedComboIds.has(item.id));
+    const comboSubtotal = product.price * qty + selectedComboProducts.reduce((sum, item) => sum + item.price, 0);
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -270,6 +386,105 @@ const ProductDetailPage = () => {
                 </div>
             </div>
 
+            <section className="mb-12 border border-border rounded-3xl p-5 sm:p-6 bg-card/60">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-5">
+                    <div>
+                        <h2 className="section-title">Thường mua cùng</h2>
+                        <p className="text-sm text-muted-foreground mt-1">Chọn sản phẩm mua kèm phù hợp với món bạn đang xem.</p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                        Tổng tạm tính: <span className="text-lg font-black text-[var(--pet-coral)]">{formatCurrency(comboSubtotal)}</span>
+                    </div>
+                </div>
+
+                {comboLoading && (
+                    <div className="py-6 text-sm text-muted-foreground">Đang tải combo tiết kiệm...</div>
+                )}
+
+                {!comboLoading && comboError && (
+                    <div className="py-6 text-sm text-muted-foreground">{comboError}</div>
+                )}
+
+                {!comboLoading && !comboError && visibleComboProducts.length === 0 && (
+                    <div className="py-6 text-sm text-muted-foreground">Chưa có sản phẩm mua kèm phù hợp.</div>
+                )}
+
+                {!comboLoading && !comboError && visibleComboProducts.length > 0 && (
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-start">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex items-center gap-3 p-3 rounded-2xl border border-[var(--pet-coral)]/30 bg-[var(--pet-coral)]/5">
+                                <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
+                                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-sm text-foreground line-clamp-2">{product.name}</p>
+                                    <p className="text-sm font-black text-[var(--pet-coral)]">{formatCurrency(product.price)}</p>
+                                    <p className="text-xs text-muted-foreground">Sản phẩm hiện tại x{qty}</p>
+                                </div>
+                            </div>
+
+                            {visibleComboProducts.map((item) => {
+                                const selected = selectedComboIds.has(item.id);
+
+                                return (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => toggleComboProduct(item.id)}
+                                        className={`flex items-center gap-3 p-3 rounded-2xl border text-left transition-all ${
+                                            selected
+                                                ? "border-[var(--pet-coral)] bg-[var(--pet-coral)]/5"
+                                                : "border-border hover:border-[var(--pet-coral)]/40"
+                                        }`}
+                                    >
+                                        <span
+                                            className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                                                selected
+                                                    ? "bg-[var(--pet-coral)] border-[var(--pet-coral)] text-white"
+                                                    : "border-border bg-background"
+                                            }`}
+                                        >
+                                            {selected ? "✓" : ""}
+                                        </span>
+                                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
+                                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-sm text-foreground line-clamp-2">{item.name}</p>
+                                            <p className="text-sm font-black text-[var(--pet-coral)]">{formatCurrency(item.price)}</p>
+                                            <p className="text-xs text-muted-foreground">{item.inStock ? "Còn hàng" : "Hết hàng"}</p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="lg:w-64 rounded-2xl bg-muted/30 border border-border p-4">
+                            <div className="flex justify-between text-sm mb-2">
+                                <span className="text-muted-foreground">Sản phẩm chính</span>
+                                <span className="font-semibold">{formatCurrency(product.price * qty)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm mb-3">
+                                <span className="text-muted-foreground">Mua kèm đã chọn</span>
+                                <span className="font-semibold">{formatCurrency(selectedComboProducts.reduce((sum, item) => sum + item.price, 0))}</span>
+                            </div>
+                            <div className="border-t border-border pt-3 flex justify-between items-center">
+                                <span className="text-sm font-semibold">Tổng tạm tính</span>
+                                <span className="text-lg font-black text-[var(--pet-coral)]">{formatCurrency(comboSubtotal)}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleAddCombo}
+                                disabled={addingCombo || !product.inStock}
+                                className="btn-pet-primary w-full justify-center mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {addingCombo ? "Đang thêm..." : "Thêm combo vào giỏ hàng"}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </section>
+
             {/* Reviews */}
             <ProductReviews
                 productId={product.id}
@@ -277,6 +492,41 @@ const ProductDetailPage = () => {
                 averageRating={product.rating}
                 onReviewAdded={() => { void loadProduct(); }}
             />
+
+            <section className="mt-12 border-t border-border pt-8">
+                <div className="flex items-end justify-between mb-6">
+                    <div>
+                        <h2 className="section-title">Sản phẩm liên quan</h2>
+                        <p className="text-sm text-muted-foreground mt-1">Gợi ý phù hợp với sản phẩm bạn đang xem.</p>
+                    </div>
+                </div>
+
+                {recommendationsLoading && (
+                    <div className="py-8 text-sm text-muted-foreground">Đang tải sản phẩm liên quan...</div>
+                )}
+
+                {!recommendationsLoading && recommendationsError && (
+                    <div className="py-8 text-sm text-muted-foreground">{recommendationsError}</div>
+                )}
+
+                {!recommendationsLoading && !recommendationsError && visibleRecommendations.length === 0 && (
+                    <div className="py-8 text-sm text-muted-foreground">Chưa có sản phẩm liên quan.</div>
+                )}
+
+                {!recommendationsLoading && !recommendationsError && visibleRecommendations.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                        {visibleRecommendations.map((item, index) => (
+                            <div
+                                key={item.id}
+                                className="animate-fade-in-up"
+                                style={{ animationDelay: `${index * 0.07}s` }}
+                            >
+                                <ProductCard product={item} />
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
         </div>
     );
 };

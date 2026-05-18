@@ -63,6 +63,57 @@ export const addCartItem = async (req, res, next) => {
     }
 };
 
+export const addComboItems = async (req, res, next) => {
+    try {
+        const rawItems = Array.isArray(req.body?.items)
+            ? req.body.items
+            : Array.isArray(req.body?.productIds)
+                ? req.body.productIds.map((productId) => ({ productId, quantity: 1 }))
+                : [];
+        const normalizedItems = rawItems
+            .map((item) => ({
+                productId: String(item?.productId || item?.product || '').trim(),
+                quantity: Number(item?.quantity || 1),
+            }))
+            .filter((item) =>
+                mongoose.isValidObjectId(item.productId)
+                && Number.isInteger(item.quantity)
+                && item.quantity > 0,
+            );
+
+        if (!normalizedItems.length) {
+            return res.status(400).json({ message: 'Danh sÃ¡ch sáº£n pháº©m combo khÃ´ng há»£p lá»‡.' });
+        }
+
+        const productIds = [...new Set(normalizedItems.map((item) => item.productId))];
+        const products = await Product.find({ _id: { $in: productIds }, stock: { $gt: 0 } }).select('_id stock');
+        const inStockIds = new Set(products.map((product) => product._id.toString()));
+        const comboItems = normalizedItems.filter((item) => inStockIds.has(item.productId));
+
+        if (!comboItems.length) {
+            return res.status(400).json({ message: 'CÃ¡c sáº£n pháº©m combo hiá»‡n Ä‘Ã£ háº¿t hÃ ng.' });
+        }
+
+        const cart = await getOrCreateCart(req.user._id);
+
+        comboItems.forEach((item) => {
+            const existingItem = cart.items.find((cartItem) => cartItem.product.toString() === item.productId);
+
+            if (existingItem) {
+                existingItem.quantity += item.quantity;
+            } else {
+                cart.items.push({ product: item.productId, quantity: item.quantity });
+            }
+        });
+
+        await cart.save();
+        const populatedCart = await populateCart(Cart.findOne({ user: req.user._id }));
+        return res.status(200).json(toCartResponse(populatedCart));
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateCartItem = async (req, res, next) => {
     try {
         const { quantity } = req.body;

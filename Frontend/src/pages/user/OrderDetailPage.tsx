@@ -6,6 +6,7 @@ import type { Order } from "@/types/order";
 import { formatCurrency, formatDate } from "@/utils/format";
 import Loading from "@/components/common/Loading";
 import { toast } from "sonner";
+import OrderStatusTimeline from "@/components/features/order/OrderStatusTimeline";
 
 // Backend status values are PascalCase: Pending → Processing → Shipping → Delivered
 const STATUS_STEPS = ["Pending", "Processing", "Shipping", "Delivered"] as const;
@@ -141,6 +142,16 @@ const OrderDetailPage = () => {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                )}
+
+                <OrderStatusTimeline order={order} />
+
+                {order.loyaltyPointsAwarded && (order.loyaltyPoints ?? 0) > 0 && (
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-900 p-4 mb-5">
+                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                            Bạn đã nhận {order.loyaltyPoints} điểm từ đơn hàng này.
+                        </p>
                     </div>
                 )}
 

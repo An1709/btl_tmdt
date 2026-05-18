@@ -2,22 +2,44 @@ import bcrypt from 'bcrypt';
 import User from '../models/User.js';
 
 const USER_ROLES = ['customer', 'admin', 'staff'];
+const MEMBERSHIP_THRESHOLDS = [
+    { level: 'Đồng', min: 0, next: 100 },
+    { level: 'Bạc', min: 100, next: 300 },
+    { level: 'Vàng', min: 300, next: 700 },
+    { level: 'Kim cương', min: 700, next: null },
+];
 
-const sanitizeUser = (user) => ({
-    _id: user._id,
-    username: user.username,
-    displayName: user.displayName,
-    email: user.email,
-    role: user.role,
-    phone: user.phone,
-    address: user.address,
-    avatarUrl: user.avatarUrl,
-    bio: user.bio,
-    isBlocked: user.isBlocked,
-    isEmailVerified: user.isEmailVerified !== false,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-});
+const getMembershipInfo = (points = 0) => {
+    const safePoints = Math.max(Number(points) || 0, 0);
+    const tier = [...MEMBERSHIP_THRESHOLDS].reverse().find((item) => safePoints >= item.min) || MEMBERSHIP_THRESHOLDS[0];
+
+    return {
+        loyaltyPoints: safePoints,
+        membershipLevel: tier.level,
+        pointsToNextLevel: tier.next ? Math.max(tier.next - safePoints, 0) : 0,
+    };
+};
+
+const sanitizeUser = (user) => {
+    const membership = getMembershipInfo(user.loyaltyPoints);
+
+    return {
+        _id: user._id,
+        username: user.username,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        address: user.address,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        isBlocked: user.isBlocked,
+        isEmailVerified: user.isEmailVerified !== false,
+        ...membership,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+    };
+};
 
 const normalizeUserPayload = (body) => ({
     username: body.username?.trim().toLowerCase(),

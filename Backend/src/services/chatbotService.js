@@ -2,10 +2,14 @@ import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
 import Category from '../models/Category.js';
+import Post from '../models/Post.js';
+import Cart from '../models/Cart.js';
+import Collection from '../models/Collection.js';
 
 const MAX_MESSAGE_LENGTH = 2000;
-const PRODUCT_LIMIT = 5;
+const PRODUCT_LIMIT = 3;
 const ORDER_LIMIT = 5;
+const PRODUCT_SELECT_FIELDS = 'name slug price originalPrice stock sold views description category averageRating reviewCount specifications';
 
 const ORDER_STATUS_LABELS = {
     Pending: 'Chờ xác nhận',
@@ -28,8 +32,12 @@ const INTENT_KEYWORDS = {
         'san pham', 'thuc an', 'do an', 'hat', 'pate', 'phu kien', 'do choi',
         'vong co', 'day dat', 'long', 'chuong', 'nem', 'sua tam', 've sinh',
         'mua gi', 'goi y', 'tu van', 'con hang', 'ton kho', 'meo',
-        'cat', 'dog', 'kitten', 'puppy', 'giam gia', 'khuyen mai', 'sale',
+        'cat', 'dog', 'kitten', 'puppy', 'tho', 'rabbit', 'hamster', 'vet',
+        'chim', 'bird', 'parrot', 'ca', 'fish', 'aquarium', 'giam gia',
+        'khuyen mai', 'sale',
     ],
+    blog: ['blog', 'bai viet', 'article', 'tin tuc', 'news', 'meo cham soc', 'kinh nghiem', 'tips', 'huong dan cham soc', 'cham soc thu cung'],
+    about: ['petmart la gi', 'trang web nay la gi', 'web nay la gi', 'shop ban gi', 'shop ban nhung gi', 'gioi thieu', 've cua hang', 'web nay co gi', 'cua hang nay', 'website nay'],
     sale: ['giam gia', 'khuyen mai', 'sale', 'uu dai', 'gia tot', 'dang giam'],
     cart: ['gio hang', 'them vao gio', 'xoa gio', 'cap nhat so luong', 'so luong'],
     checkout: ['dat hang', 'checkout', 'mua hang', 'dia chi giao hang', 'phi ship'],
@@ -46,12 +54,35 @@ const INTENT_KEYWORDS = {
 const SEARCH_SYNONYMS = {
     meo: ['mèo', 'meo', 'cat', 'kitten', 'mèo con', 'pate mèo', 'hạt mèo'],
     cho: ['chó', 'cho', 'dog', 'puppy', 'cún', 'cún con', 'hạt chó'],
+    tho: ['thỏ', 'tho', 'rabbit', 'bunny'],
+    hamster: ['hamster', 'chuột hamster'],
+    vet: ['vẹt', 'vet', 'chim', 'bird', 'parrot'],
+    ca: ['cá', 'ca', 'fish', 'aquarium', 'bể cá', 'thủy sinh'],
     con: ['con', 'nhỏ', 'baby', 'kitten', 'puppy', 'sơ sinh'],
     thuc: ['thức ăn', 'thuc an', 'food', 'hạt', 'pate', 'dinh dưỡng'],
     phu: ['phụ kiện', 'phu kien', 'accessory', 'vòng cổ', 'dây dắt', 'đồ chơi'],
+    choi: ['đồ chơi', 'do choi', 'toy', 'bóng', 'gặm'],
     long: ['lồng', 'chuồng', 'nệm', 'nhà'],
-    tam: ['tắm', 'sữa tắm', 'vệ sinh', 'khử mùi'],
+    vong: ['vòng cổ', 'vong co', 'dây dắt', 'day dat', 'leash', 'collar'],
+    vesinh: ['cát vệ sinh', 'cat ve sinh', 'khay vệ sinh', 'khử mùi'],
+    tam: ['tắm', 'sữa tắm', 'vệ sinh', 'khử mùi', 'chăm sóc', 'grooming'],
 };
+
+const PET_CATEGORY_TERMS = {
+    dog: ['chó', 'dog', 'puppy', 'cun'],
+    cat: ['meo', 'cat', 'kitten'],
+    rabbit: ['tho', 'rabbit', 'bunny'],
+    hamster: ['hamster'],
+    parrot: ['vet', 'chim', 'bird', 'parrot'],
+    fish: ['ca', 'fish', 'aquarium', 'thuy sinh'],
+    accessory: ['phu kien', 'accessory', 'accessories'],
+};
+
+const PRODUCT_TYPE_TERMS = [
+    'thuc an', 'food', 'hat', 'pate', 'do choi', 'toy', 'phu kien',
+    'chuong', 'long', 'vong co', 'day dat', 'cat ve sinh', 'sua tam',
+    'cham soc', 've sinh',
+];
 
 export const validateChatMessage = (message) => {
     if (typeof message !== 'string' || !message.trim()) {
@@ -85,7 +116,9 @@ const detectIntent = (message) => {
         ]),
     );
 
-    intent.product = intent.product || /\b(chó|mèo)\b/i.test(message) || /\bcho\s+cho\b/.test(normalizedMessage);
+    intent.product = intent.product
+        || /\b(chó|mèo|thỏ|vẹt|chim|cá|hamster)\b/i.test(message)
+        || /\b(cho\s+cho|meo|tho|vet|chim|ca|hamster|dog|cat|rabbit|bird|parrot|fish|aquarium)\b/.test(normalizedMessage);
 
     return intent;
 };
@@ -110,12 +143,13 @@ const getRawTerms = (message) =>
 
 const getPetSpecies = (message) => {
     const normalizedMessage = normalizeText(message);
-    if (/\b(mèo|meo|cat|kitten)\b/i.test(message) || /\b(meo|cat|kitten)\b/.test(normalizedMessage)) {
-        return 'cat';
-    }
-    if (/\b(chó|dog|puppy|cún)\b/i.test(message) || /\b(dog|puppy|cun)\b/.test(normalizedMessage) || /\bcho\s+cho\b/.test(normalizedMessage)) {
-        return 'dog';
-    }
+    if (/\b(mèo|meo|cat|kitten)\b/i.test(message) || /\b(meo|cat|kitten)\b/.test(normalizedMessage)) return 'cat';
+    if (/\b(chó|dog|puppy|cún)\b/i.test(message) || /\b(dog|puppy|cun)\b/.test(normalizedMessage) || /\bcho\s+cho\b/.test(normalizedMessage)) return 'dog';
+    if (/\b(thỏ|rabbit|bunny)\b/i.test(message) || /\b(tho|rabbit|bunny)\b/.test(normalizedMessage)) return 'rabbit';
+    if (/\bhamster\b/i.test(message) || /\bhamster\b/.test(normalizedMessage)) return 'hamster';
+    if (/\b(vẹt|chim|bird|parrot)\b/i.test(message) || /\b(vet|chim|bird|parrot)\b/.test(normalizedMessage)) return 'parrot';
+    if (/\b(cá|fish|aquarium)\b/i.test(message) || /\b(ca|fish|aquarium|thuy sinh)\b/.test(normalizedMessage)) return 'fish';
+    if (/\b(phụ kiện|accessory|accessories)\b/i.test(message) || /\b(phu kien|accessory|accessories)\b/.test(normalizedMessage)) return 'accessory';
     return '';
 };
 
@@ -124,7 +158,7 @@ const extractProductKeywords = (message, intent) => {
         'toi', 'minh', 'ban', 'can', 'muon', 'tim', 'cho', 'mua', 'hang',
         'san', 'pham', 'goi', 'tu', 'van', 'petmart', 'co', 'khong',
         'gia', 'bao', 'nhieu', 'loai', 'nao', 'giup', 'mot', 'vai',
-        'giam', 'khuyen', 'mai', 'sale', 'uu', 'dai', 'dang',
+        'giam', 'khuyen', 'mai', 'sale', 'uu', 'dai', 'dang', 'gi', 'hay',
     ]);
 
     const normalizedWords = normalizeText(message)
@@ -150,6 +184,11 @@ const extractProductKeywords = (message, intent) => {
     });
 
     return [...keywords].slice(0, 18);
+};
+
+const hasSpecificProductSignal = (message, intent) => {
+    if (intent.sale || getPetSpecies(message)) return true;
+    return extractProductKeywords(message, intent).length > 0;
 };
 
 const buildProductFilter = async (message, intent, keywords) => {
@@ -181,16 +220,17 @@ const buildProductFilter = async (message, intent, keywords) => {
         $or: [
             ...regexes.map((regex) => ({ name: regex })),
             ...regexes.map((regex) => ({ description: regex })),
+            ...regexes.map((regex) => ({ 'specifications.Giống': regex })),
+            ...regexes.map((regex) => ({ 'specifications.Loại': regex })),
+            ...regexes.map((regex) => ({ 'specifications.Dành cho': regex })),
             ...(categories.length ? [{ category: { $in: categories.map((category) => category._id) } }] : []),
         ],
     });
 
     const speciesTerms = [];
     const petSpecies = getPetSpecies(message);
-    if (petSpecies === 'cat') {
-        speciesTerms.push('mèo', 'meo', 'cat', 'kitten');
-    } else if (petSpecies === 'dog') {
-        speciesTerms.push('chó', 'dog', 'puppy', 'cún', 'cun');
+    if (petSpecies && PET_CATEGORY_TERMS[petSpecies]) {
+        speciesTerms.push(...PET_CATEGORY_TERMS[petSpecies]);
     }
 
     if (speciesTerms.length) {
@@ -207,6 +247,9 @@ const buildProductFilter = async (message, intent, keywords) => {
             $or: [
                 ...speciesRegexes.map((regex) => ({ name: regex })),
                 ...speciesRegexes.map((regex) => ({ description: regex })),
+                ...speciesRegexes.map((regex) => ({ 'specifications.Giống': regex })),
+                ...speciesRegexes.map((regex) => ({ 'specifications.Loại': regex })),
+                ...speciesRegexes.map((regex) => ({ 'specifications.Dành cho': regex })),
                 ...(speciesCategories.length ? [{ category: { $in: speciesCategories.map((category) => category._id) } }] : []),
             ],
         });
@@ -228,18 +271,23 @@ const productMatchesSpecies = (product, species) => {
     const categoryText = normalizeText([product.category?.name, product.category?.slug].filter(Boolean).join(' '));
     const descriptiveText = normalizeText([product.description, formatSpecifications(product.specifications)].filter(Boolean).join(' '));
 
-    if (species === 'cat') {
-        return ['meo', 'cat', 'kitten'].some((term) => productName.includes(term) || categoryText.includes(term) || descriptiveText.includes(term));
+    if (species === 'dog' && /\bcho\b/.test(`${productName} ${categoryText}`)) {
+        return true;
     }
 
-    return ['dog', 'puppy', 'cun'].some((term) => productName.includes(term) || categoryText.includes(term) || descriptiveText.includes(term));
+    const terms = PET_CATEGORY_TERMS[species] || [];
+    return terms.some((term) => productName.includes(term) || categoryText.includes(term) || descriptiveText.includes(term));
 };
 
 const getProductMatchScore = (product, keywords) => {
     const searchText = getProductSearchText(product);
     const productName = normalizeText(product.name);
     const categoryName = normalizeText(product.category?.name || '');
-    const ignoredRankingTerms = new Set(['meo', 'cat', 'kitten', 'cho', 'dog', 'puppy', 'cun', 'con', 'nho', 'baby']);
+    const ignoredRankingTerms = new Set([
+        'meo', 'cat', 'kitten', 'cho', 'dog', 'puppy', 'cun', 'tho', 'rabbit',
+        'hamster', 'vet', 'chim', 'bird', 'parrot', 'ca', 'fish', 'aquarium',
+        'con', 'nho', 'baby',
+    ]);
 
     return keywords.reduce((score, keyword) => {
         const normalizedKeyword = normalizeText(keyword);
@@ -262,6 +310,176 @@ const sortProductsForSupport = (products, keywords) =>
         return Number(b.sold || 0) - Number(a.sold || 0);
     });
 
+const getIdString = (value) => String(value?._id || value || '');
+
+const pushUniqueProducts = (target, products, limit = PRODUCT_LIMIT) => {
+    const existingIds = new Set(target.map((product) => getIdString(product)));
+
+    for (const product of products) {
+        const productId = getIdString(product);
+        if (!productId || existingIds.has(productId)) continue;
+
+        target.push(product);
+        existingIds.add(productId);
+        if (target.length >= limit) break;
+    }
+
+    return target;
+};
+
+const getPopularProducts = async ({ excludeIds = new Set(), limit = PRODUCT_LIMIT } = {}) => {
+    const excludedObjectIds = [...excludeIds].filter((id) => mongoose.isValidObjectId(id));
+    const filter = excludedObjectIds.length ? { _id: { $nin: excludedObjectIds } } : {};
+
+    return Product.find(filter)
+        .populate('category', 'name slug')
+        .select(PRODUCT_SELECT_FIELDS)
+        .sort({ stock: -1, reviewCount: -1, averageRating: -1, sold: -1, views: -1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+};
+
+const extractBehaviorSignals = (products) => {
+    const categoryIds = new Set();
+    const keywords = new Set();
+
+    products.forEach((product) => {
+        if (product.category?._id) categoryIds.add(getIdString(product.category._id));
+
+        const searchText = getProductSearchText(product);
+        const nameAndCategoryText = normalizeText([product.name, product.category?.name, product.category?.slug].filter(Boolean).join(' '));
+        if (/\bcho\b/.test(nameAndCategoryText)) {
+            keywords.add('dog');
+            keywords.add('puppy');
+            keywords.add('cun');
+        }
+
+        Object.entries(PET_CATEGORY_TERMS).forEach(([species, terms]) => {
+            if (terms.some((term) => searchText.includes(term))) {
+                terms.forEach((term) => keywords.add(term));
+                keywords.add(species);
+            }
+        });
+
+        PRODUCT_TYPE_TERMS.forEach((term) => {
+            if (searchText.includes(term)) keywords.add(term);
+        });
+    });
+
+    return {
+        categoryIds: [...categoryIds].filter((id) => mongoose.isValidObjectId(id)),
+        keywords: [...keywords].slice(0, 12),
+    };
+};
+
+const findSimilarProductsFromSignals = async ({ categoryIds, keywords, excludeIds, limit = PRODUCT_LIMIT }) => {
+    const recommendations = [];
+    const excludedObjectIds = [...excludeIds].filter((id) => mongoose.isValidObjectId(id));
+    const baseFilter = excludedObjectIds.length ? { _id: { $nin: excludedObjectIds } } : {};
+
+    if (categoryIds.length) {
+        const categoryProducts = await Product.find({ ...baseFilter, category: { $in: categoryIds } })
+            .populate('category', 'name slug')
+            .select(PRODUCT_SELECT_FIELDS)
+            .sort({ stock: -1, averageRating: -1, sold: -1, views: -1, createdAt: -1 })
+            .limit(12)
+            .lean();
+
+        pushUniqueProducts(recommendations, categoryProducts, limit);
+    }
+
+    if (recommendations.length < limit && keywords.length) {
+        const regexes = keywords.map((keyword) => new RegExp(escapeRegex(keyword), 'i'));
+        const keywordProducts = await Product.find({
+            ...baseFilter,
+            $or: [
+                ...regexes.map((regex) => ({ name: regex })),
+                ...regexes.map((regex) => ({ description: regex })),
+                ...regexes.map((regex) => ({ 'specifications.Giống': regex })),
+                ...regexes.map((regex) => ({ 'specifications.Loại': regex })),
+                ...regexes.map((regex) => ({ 'specifications.Dành cho': regex })),
+            ],
+        })
+            .populate('category', 'name slug')
+            .select(PRODUCT_SELECT_FIELDS)
+            .sort({ stock: -1, averageRating: -1, sold: -1, views: -1, createdAt: -1 })
+            .limit(12)
+            .lean();
+
+        pushUniqueProducts(recommendations, sortProductsForSupport(keywordProducts, keywords), limit);
+    }
+
+    if (recommendations.length < limit) {
+        const fallbackProducts = await getPopularProducts({ excludeIds, limit: limit * 3 });
+        pushUniqueProducts(recommendations, fallbackProducts, limit);
+    }
+
+    return recommendations.slice(0, limit);
+};
+
+const getUserBehaviorProductIds = async (userId) => {
+    const [cart, collection, orders] = await Promise.all([
+        Cart.findOne({ user: userId }).select('items.product').lean(),
+        Collection.findOne({ user: userId }).select('products').lean(),
+        Order.find({ user: userId, status: { $ne: 'Cancelled' } })
+            .select('orderItems.product')
+            .sort({ createdAt: -1 })
+            .limit(8)
+            .lean(),
+    ]);
+
+    const cartIds = (cart?.items || []).map((item) => getIdString(item.product)).filter(Boolean);
+    const favoriteIds = (collection?.products || []).map(getIdString).filter(Boolean);
+    const purchasedIds = orders.flatMap((order) =>
+        (order.orderItems || []).map((item) => getIdString(item.product)).filter(Boolean),
+    );
+
+    return {
+        cartIds,
+        favoriteIds,
+        purchasedIds,
+        signalIds: [...new Set([...favoriteIds, ...cartIds, ...purchasedIds])],
+    };
+};
+
+const findPersonalizedProducts = async (user) => {
+    const userId = user?._id;
+    if (!userId) {
+        return {
+            products: await getPopularProducts(),
+            personalized: false,
+        };
+    }
+
+    const behavior = await getUserBehaviorProductIds(userId);
+    if (!behavior.signalIds.length) {
+        return {
+            products: await getPopularProducts(),
+            personalized: false,
+        };
+    }
+
+    const signalProducts = await Product.find({ _id: { $in: behavior.signalIds } })
+        .populate('category', 'name slug')
+        .select(PRODUCT_SELECT_FIELDS)
+        .lean();
+    const orderedSignalProducts = behavior.signalIds
+        .map((id) => signalProducts.find((product) => getIdString(product) === id))
+        .filter(Boolean);
+    const signals = extractBehaviorSignals(orderedSignalProducts);
+    const excludeIds = new Set(behavior.cartIds);
+    const products = await findSimilarProductsFromSignals({
+        categoryIds: signals.categoryIds,
+        keywords: signals.keywords,
+        excludeIds,
+    });
+
+    return {
+        products,
+        personalized: products.length > 0,
+    };
+};
+
 const findRelevantProducts = async (message, intent) => {
     try {
         const keywords = extractProductKeywords(message, intent);
@@ -269,7 +487,7 @@ const findRelevantProducts = async (message, intent) => {
         const filter = await buildProductFilter(message, intent, keywords);
         const products = await Product.find(filter)
             .populate('category', 'name slug')
-            .select('name price originalPrice stock sold description category averageRating reviewCount specifications')
+            .select(PRODUCT_SELECT_FIELDS)
             .sort({ stock: -1, averageRating: -1, sold: -1, createdAt: -1 })
             .limit(12)
             .lean();
@@ -280,7 +498,7 @@ const findRelevantProducts = async (message, intent) => {
         if (petSpecies && !speciesProducts.length) {
             const broaderProducts = await Product.find({})
                 .populate('category', 'name slug')
-                .select('name price originalPrice stock sold description category averageRating reviewCount specifications')
+                .select(PRODUCT_SELECT_FIELDS)
                 .sort({ stock: -1, averageRating: -1, sold: -1, createdAt: -1 })
                 .limit(50)
                 .lean();
@@ -313,39 +531,146 @@ const formatSpecifications = (specifications) => {
         .join(', ');
 };
 
-const formatProductRecommendations = (products) =>
-    products.map((product, index) => {
-        const categoryName = product.category?.name || 'Chưa phân loại';
-        const stockLabel = product.stock > 0 ? `còn ${product.stock} sản phẩm` : 'đang hết hàng';
-        const originalPrice = product.originalPrice && product.originalPrice > product.price
-            ? `, giá gốc ${formatCurrency(product.originalPrice)}`
-            : '';
-        const rating = product.reviewCount
-            ? `, đánh giá ${Number(product.averageRating || 0).toFixed(1)}/5 (${product.reviewCount} lượt)`
-            : '';
-        const specs = formatSpecifications(product.specifications);
-        const description = stripHtml(product.description).slice(0, 120);
-        const reason = specs || description || `thuộc danh mục ${categoryName}`;
+const formatRecommendationSpecs = (specifications, description = '') => {
+    if (!specifications) {
+        return stripHtml(description).slice(0, 70);
+    }
 
-        return `${index + 1}. ${product.name} - ${formatCurrency(product.price)}${originalPrice}. Danh mục: ${categoryName}, ${stockLabel}${rating}. Gợi ý vì: ${reason}.`;
+    const entries = specifications instanceof Map
+        ? [...specifications.entries()]
+        : Object.entries(specifications);
+    const preferredKeys = [
+        'thuong hieu',
+        'trong luong',
+        'dung tich',
+        'phu hop',
+        'chat lieu',
+        'kich thuoc',
+    ];
+    const normalizedEntries = entries
+        .map(([key, value]) => ({
+            key: String(key).trim(),
+            value: String(value || '').trim(),
+            normalizedKey: normalizeText(key),
+        }))
+        .filter((entry) => entry.key && entry.value);
+    const preferredEntries = preferredKeys
+        .map((preferredKey) => normalizedEntries.find((entry) => entry.normalizedKey.includes(preferredKey)))
+        .filter(Boolean);
+    const fallbackEntries = normalizedEntries.filter((entry) =>
+        !preferredEntries.some((preferredEntry) => preferredEntry.key === entry.key),
+    );
+    const selectedEntries = [...preferredEntries, ...fallbackEntries].slice(0, 3);
+
+    return selectedEntries
+        .map(({ key, value }) => `${key}: ${value}`)
+        .join(', ');
+};
+
+const formatProductRecommendations = (products) =>
+    products.slice(0, PRODUCT_LIMIT).map((product, index) => {
+        const specs = formatRecommendationSpecs(product.specifications, product.description);
+        const specsText = specs ? `. ${specs}` : '';
+
+        return `${index + 1}. ${product.name} - ${formatCurrency(product.price)}${specsText}`;
     }).join('\n');
 
-const getProductReply = async (message, intent) => {
-    const productContext = await findRelevantProducts(message, intent);
+const getProductReply = async (message, intent, user) => {
+    const hasSpecificSignal = hasSpecificProductSignal(message, intent);
+    let productContext;
+
+    if (hasSpecificSignal) {
+        productContext = await findRelevantProducts(message, intent);
+    } else {
+        try {
+            const personalizedContext = await findPersonalizedProducts(user);
+            productContext = {
+                products: personalizedContext.products,
+                lookupFailed: false,
+                personalized: personalizedContext.personalized,
+            };
+        } catch {
+            productContext = {
+                products: [],
+                lookupFailed: true,
+            };
+        }
+    }
 
     if (productContext.lookupFailed) {
         return 'Mình chưa thể tải dữ liệu sản phẩm lúc này. Bạn có thể thử lại sau hoặc tìm trực tiếp trong trang Sản phẩm.';
     }
 
     if (!productContext.products.length) {
-        return 'Mình chưa tìm thấy sản phẩm phù hợp trong cửa hàng. Bạn có thể thử từ khóa khác như "thức ăn cho mèo", "đồ chơi cho chó" hoặc "sản phẩm giảm giá".';
+        return 'Hiện tại mình chưa tìm thấy sản phẩm phù hợp. Bạn có thể thử tìm theo chó, mèo, thỏ, hamster, vẹt, cá hoặc phụ kiện.';
     }
 
     const prefix = intent.sale
         ? 'Mình tìm thấy một số sản phẩm đang có giá tốt trong PetMart:\n'
+        : productContext.personalized
+            ? 'Dựa trên sản phẩm bạn đã quan tâm, mình gợi ý 3 món này:\n'
         : 'Mình gợi ý một vài sản phẩm có trong PetMart:\n';
 
-    return `${prefix}${formatProductRecommendations(productContext.products)}\nBạn có thể mở trang sản phẩm để xem hình ảnh, mô tả chi tiết và thêm vào giỏ hàng.`;
+    return `${prefix}${formatProductRecommendations(productContext.products)}`;
+};
+
+const BLOG_IGNORED_TERMS = new Set([
+    'blog', 'bai', 'viet', 'article', 'tin', 'tuc', 'news', 'meo', 'tips',
+    'co', 'nao', 'khong', 've', 'cho', 'minh', 'toi', 'xem', 'doc', 'goi',
+    'y', 'tim', 'kiem', 'dung', 'lam', 'gi',
+]);
+
+const extractBlogKeywords = (message) => {
+    const words = normalizeText(message)
+        .split(/[^a-z0-9]+/)
+        .map((word) => word.trim())
+        .filter((word) => word.length >= 2 && !BLOG_IGNORED_TERMS.has(word));
+
+    return [...new Set(words)].slice(0, 8);
+};
+
+const formatBlogSuggestions = (posts) => posts.map((post, index) => {
+    const excerpt = stripHtml(post.excerpt || post.content || '').slice(0, 120);
+    const stats = [
+        post.views ? `${post.views} lượt xem` : null,
+        Array.isArray(post.likes) && post.likes.length ? `${post.likes.length} lượt thích` : null,
+    ].filter(Boolean).join(', ');
+
+    return `${index + 1}. ${post.title}${stats ? ` (${stats})` : ''}${excerpt ? ` - ${excerpt}` : ''}. Xem tại /blog/${post.slug}`;
+}).join('\n');
+
+const getBlogReply = async (message) => {
+    const normalizedMessage = normalizeText(message);
+    const wantsPurpose = /(blog.*(lam gi|dung de|la gi)|muc blog|blog cua web)/.test(normalizedMessage);
+    const keywords = extractBlogKeywords(message);
+    const intro = 'Blog PetMart là nơi chia sẻ mẹo chăm sóc thú cưng, kinh nghiệm chọn sản phẩm, dinh dưỡng, vệ sinh và các bài viết hữu ích cho người nuôi thú cưng.';
+
+    try {
+        const regexes = keywords.map((keyword) => new RegExp(escapeRegex(keyword), 'i'));
+        const filter = { type: 'blog' };
+
+        if (regexes.length && !wantsPurpose) {
+            filter.$or = [
+                ...regexes.map((regex) => ({ title: regex })),
+                ...regexes.map((regex) => ({ tags: regex })),
+                ...regexes.map((regex) => ({ content: regex })),
+            ];
+        }
+
+        const posts = await Post.find(filter)
+            .select('title slug content excerpt tags views likes createdAt')
+            .sort({ views: -1, createdAt: -1 })
+            .limit(3)
+            .lean();
+
+        if (!posts.length) {
+            return `${intro}\nHiện tại chưa có bài viết phù hợp, bạn có thể xem thêm tại mục Blog.`;
+        }
+
+        return `${intro}\nMình gợi ý một vài bài viết có sẵn:\n${formatBlogSuggestions(posts)}`;
+    } catch {
+        return `${intro}\nHiện tại chưa có bài viết phù hợp, bạn có thể xem thêm tại mục Blog.`;
+    }
 };
 
 const getRequestedOrderCode = (message) => {
@@ -453,7 +778,15 @@ const getOrderReply = async (message, user, intent) => {
 
 const getStaticReply = (intent) => {
     if (intent.greeting) {
-        return 'Xin chào! Mình là trợ lý PetMart. Mình có thể hỗ trợ bạn tìm sản phẩm, hướng dẫn đặt hàng, thanh toán, kiểm tra đơn hàng hoặc hỗ trợ tài khoản.';
+        return 'Xin chào! Mình là trợ lý PetMart. Mình có thể hỗ trợ bạn tìm sản phẩm, đọc blog chăm sóc thú cưng, hướng dẫn đặt hàng, thanh toán, kiểm tra đơn hàng hoặc hỗ trợ tài khoản.';
+    }
+
+    if (intent.about) {
+        return 'PetMart là website thương mại điện tử dành cho thú cưng, bán thú cưng, thức ăn và phụ kiện. Bạn có thể xem sản phẩm, thêm vào giỏ hàng, yêu thích sản phẩm, đặt hàng, thanh toán COD/VNPay, theo dõi đơn hàng, đọc blog chăm sóc thú cưng và nhận hỗ trợ qua chatbot.';
+    }
+
+    if (intent.blog) {
+        return 'Blog PetMart chia sẻ mẹo chăm sóc thú cưng, kiến thức dinh dưỡng, vệ sinh và kinh nghiệm chọn sản phẩm. Bạn có thể mở mục Blog để đọc các bài viết mới nhất.';
     }
 
     if (intent.unsafe) {
@@ -512,15 +845,19 @@ export const generateChatbotReply = async ({ message, user }) => {
 
     let reply;
 
-    if (intent.product) {
-        reply = await getProductReply(message, intent);
+    if (intent.blog) {
+        reply = await getBlogReply(message);
+    } else if (intent.about) {
+        reply = getStaticReply(intent);
+    } else if (intent.product) {
+        reply = await getProductReply(message, intent, user);
     } else if (intent.cancel && !asksForOwnOrder(message)) {
         reply = getStaticReply(intent);
     } else if (intent.order || intent.cancel) {
         reply = await getOrderReply(message, user, intent);
     } else {
         reply = getStaticReply(intent)
-            || 'Mình chưa hiểu rõ câu hỏi của bạn. Bạn có thể hỏi về sản phẩm, đơn hàng, thanh toán hoặc tài khoản.';
+            || 'Mình chưa hiểu rõ câu hỏi của bạn. Bạn có thể hỏi về sản phẩm, blog, đơn hàng, thanh toán hoặc tài khoản.';
     }
 
     return {

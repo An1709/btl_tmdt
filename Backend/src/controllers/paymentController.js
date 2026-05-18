@@ -3,6 +3,21 @@ import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 import Order from '../models/Order.js';
 
+function appendPaymentStatusHistory(order, status, note) {
+    const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
+    const last = history[history.length - 1];
+
+    if (last?.status === status && last?.note === note) return;
+
+    order.statusHistory = history;
+    order.statusHistory.push({
+        status,
+        note,
+        updatedAt: new Date(),
+        updatedByRole: 'system',
+    });
+}
+
 function sortObject(obj) {
     let sorted = {};
     let str = [];
@@ -88,6 +103,7 @@ async function markOrderPaidFromVNPay(order, queryParams) {
         status: queryParams['vnp_ResponseCode'],
         update_time: queryParams['vnp_PayDate'],
     };
+    appendPaymentStatusHistory(order, 'Processing', 'Thanh toán VNPay thành công, đơn hàng đang được xử lý');
 
     return order.save();
 }
@@ -269,6 +285,7 @@ export const vnpayIpn = async (req, res) => {
 
         // Payment failed / user cancelled
         order.status = 'Cancelled';
+        appendPaymentStatusHistory(order, 'Cancelled', 'Thanh toán VNPay không thành công, đơn hàng đã bị hủy');
         await order.save();
         return res.status(200).json({ RspCode: '00', Message: 'Confirm Success' });
 

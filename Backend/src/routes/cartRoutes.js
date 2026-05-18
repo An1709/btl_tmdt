@@ -2,6 +2,7 @@ import express from 'express';
 import {
     getCart,
     addCartItem,
+    addComboItems,
     updateCartItem,
     removeCartItem,
     clearCart,
@@ -16,6 +17,8 @@ router.route('/')
     .get(getCart)
     .post(addCartItem)
     .delete(clearCart);
+
+router.route('/add-combo').post(addComboItems);
 
 router.route('/:productId')
     .put(updateCartItem)

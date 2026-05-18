@@ -10,6 +10,7 @@ interface CartStore {
     currentUserId: string | null;
     fetchCart: (userId?: string | null) => Promise<void>;
     addItem: (product: Product, quantity?: number) => Promise<void>;
+    addCombo: (items: { product: Product; quantity?: number }[]) => Promise<void>;
     removeItem: (productId: string) => Promise<void>;
     updateQty: (productId: string, quantity: number) => Promise<void>;
     clearCart: () => Promise<void>;
@@ -53,6 +54,15 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     addItem: async (product: Product, quantity = 1) => {
         removeLegacyCartStorage();
         const items = await cartService.addItem(product.id, quantity);
+        set({ items });
+    },
+
+    addCombo: async (comboItems) => {
+        removeLegacyCartStorage();
+        const items = await cartService.addCombo(comboItems.map((item) => ({
+            productId: item.product.id,
+            quantity: item.quantity ?? 1,
+        })));
         set({ items });
     },
 

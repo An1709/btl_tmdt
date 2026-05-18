@@ -1,6 +1,11 @@
 import express from 'express';
 import {
     getProducts,
+    getFeaturedProducts,
+    getPersonalizedRecommendations,
+    getProductSearchSuggestions,
+    getProductRecommendations,
+    getProductComboSuggestions,
     getProductById,
     createProduct,
     updateProduct,
@@ -14,6 +19,11 @@ const router = express.Router();
 
 // Public
 router.route('/').get(getProducts);
+router.route('/featured').get(getFeaturedProducts);
+router.route('/recommendations/personalized').get(getPersonalizedRecommendations);
+router.route('/search/suggestions').get(getProductSearchSuggestions);
+router.route('/:id/recommendations').get(getProductRecommendations);
+router.route('/:id/combo-suggestions').get(getProductComboSuggestions);
 router.route('/:id').get(getProductById);
 
 // User Review

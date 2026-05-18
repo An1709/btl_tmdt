@@ -1,5 +1,6 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
+import User from '../models/User.js';
 import moment from 'moment';
 import qs from 'qs';
 import crypto from 'crypto';
@@ -7,6 +8,179 @@ import vnpayConfig from '../config/vnpayConfig.js';
 
 const ORDER_STATUS_FLOW = ['Pending', 'Processing', 'Shipping', 'Delivered'];
 const CUSTOMER_CANCELLABLE_STATUSES = ['Pending', 'Processing'];
+const POINTS_PER_VND = 10000;
+const MEMBERSHIP_THRESHOLDS = [
+    { level: 'Đồng', min: 0 },
+    { level: 'Bạc', min: 100 },
+    { level: 'Vàng', min: 300 },
+    { level: 'Kim cương', min: 700 },
+];
+const ORDER_STATUS_NOTES = {
+    Created: 'Đơn hàng đã được tạo',
+    Pending: 'Chờ xác nhận',
+    Processing: 'Đơn hàng đang được xử lý',
+    Shipping: 'Đơn hàng đang được giao',
+    Delivered: 'Đơn hàng đã giao thành công',
+    CancelRequested: 'Khách hàng đã yêu cầu hủy đơn',
+    CancelRejected: 'Shop đã từ chối yêu cầu hủy đơn',
+    Cancelled: 'Đơn hàng đã bị hủy',
+};
+
+const getActorRole = (user) => user?.role || 'customer';
+
+const getActorId = (user) => user?._id || undefined;
+
+const appendStatusHistory = (order, { status, note, user, updatedAt = new Date() }) => {
+    const nextStatus = String(status || '').trim();
+    if (!nextStatus) return;
+
+    const nextNote = String(note || ORDER_STATUS_NOTES[nextStatus] || nextStatus).trim();
+    const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
+    const last = history[history.length - 1];
+
+    if (
+        last
+        && last.status === nextStatus
+        && String(last.note || '') === nextNote
+    ) {
+        return;
+    }
+
+    order.statusHistory = history;
+    order.statusHistory.push({
+        status: nextStatus,
+        note: nextNote,
+        updatedAt,
+        updatedBy: getActorId(user),
+        updatedByRole: getActorRole(user),
+    });
+};
+
+const buildFallbackStatusHistory = (order) => {
+    const createdAt = order.createdAt || order._id?.getTimestamp?.() || new Date();
+    const history = [{
+        status: 'Created',
+        note: ORDER_STATUS_NOTES.Created,
+        updatedAt: createdAt,
+        updatedBy: order.user?._id || order.user,
+        updatedByRole: 'customer',
+    }];
+
+    if (order.status && order.status !== 'Pending') {
+        history.push({
+            status: order.status,
+            note: ORDER_STATUS_NOTES[order.status] || order.status,
+            updatedAt: order.updatedAt || createdAt,
+            updatedByRole: order.status === 'Cancelled' ? 'admin' : 'system',
+        });
+    } else {
+        history.push({
+            status: 'Pending',
+            note: ORDER_STATUS_NOTES.Pending,
+            updatedAt: createdAt,
+            updatedByRole: 'system',
+        });
+    }
+
+    if (order.cancelRequestedAt) {
+        history.push({
+            status: 'CancelRequested',
+            note: ORDER_STATUS_NOTES.CancelRequested,
+            updatedAt: order.cancelRequestedAt,
+            updatedBy: order.user?._id || order.user,
+            updatedByRole: 'customer',
+        });
+    }
+
+    if (order.cancelStatus === 'rejected' && order.cancelResolvedAt) {
+        history.push({
+            status: 'CancelRejected',
+            note: order.cancelRejectionReason
+                ? `${ORDER_STATUS_NOTES.CancelRejected}: ${order.cancelRejectionReason}`
+                : ORDER_STATUS_NOTES.CancelRejected,
+            updatedAt: order.cancelResolvedAt,
+            updatedByRole: 'admin',
+        });
+    }
+
+    if (order.status === 'Cancelled') {
+        history.push({
+            status: 'Cancelled',
+            note: ORDER_STATUS_NOTES.Cancelled,
+            updatedAt: order.cancelResolvedAt || order.updatedAt || createdAt,
+            updatedByRole: 'admin',
+        });
+    }
+
+    return history
+        .filter((item, index, items) => (
+            index === 0
+            || item.status !== items[index - 1].status
+            || item.note !== items[index - 1].note
+        ))
+        .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
+};
+
+const sanitizeStatusHistory = (history = []) => history.map((item) => ({
+    status: item.status,
+    note: item.note,
+    updatedAt: item.updatedAt,
+    updatedBy: item.updatedBy,
+    updatedByRole: item.updatedByRole,
+}));
+
+const withStatusHistory = (order) => {
+    const orderObject = typeof order.toObject === 'function' ? order.toObject() : order;
+    const history = Array.isArray(orderObject.statusHistory) && orderObject.statusHistory.length
+        ? orderObject.statusHistory
+        : buildFallbackStatusHistory(orderObject);
+
+    return {
+        ...orderObject,
+        statusHistory: sanitizeStatusHistory(history),
+    };
+};
+
+const getMembershipLevel = (points = 0) => {
+    const safePoints = Math.max(Number(points) || 0, 0);
+    return [...MEMBERSHIP_THRESHOLDS].reverse().find((item) => safePoints >= item.min)?.level || 'Đồng';
+};
+
+const isPaymentEligibleForLoyalty = (order) => {
+    const paymentMethod = String(order.paymentMethod || '').toLowerCase();
+    return paymentMethod === 'cod' || order.isPaid === true;
+};
+
+const awardLoyaltyPointsIfEligible = async (order) => {
+    if (
+        order.status !== 'Delivered'
+        || order.loyaltyPointsAwarded
+        || order.status === 'Cancelled'
+        || !isPaymentEligibleForLoyalty(order)
+    ) {
+        return order;
+    }
+
+    const points = Math.floor(Number(order.totalPrice || 0) / POINTS_PER_VND);
+    if (points <= 0) return order;
+
+    const updatedUser = await User.findByIdAndUpdate(
+        order.user,
+        { $inc: { loyaltyPoints: points } },
+        { new: true },
+    ).select('loyaltyPoints membershipLevel');
+
+    if (updatedUser) {
+        updatedUser.membershipLevel = getMembershipLevel(updatedUser.loyaltyPoints);
+        await updatedUser.save({ validateBeforeSave: false });
+    }
+
+    order.loyaltyPointsAwarded = true;
+    order.loyaltyPoints = points;
+    order.loyaltyAwardedAt = new Date();
+
+    return order;
+};
 
 // Must match paymentController.js exactly — this is the VNPay-verified sort logic
 function sortObject(obj) {
@@ -85,6 +259,16 @@ export const addOrderItems = async (req, res, next) => {
             discountAmount: discountAmount || 0,
             ...(coupon && { coupon }),
         });
+        appendStatusHistory(order, {
+            status: 'Created',
+            note: ORDER_STATUS_NOTES.Created,
+            user: req.user,
+        });
+        appendStatusHistory(order, {
+            status: 'Pending',
+            note: ORDER_STATUS_NOTES.Pending,
+            user: req.user,
+        });
 
         const createdOrder = await order.save();
 
@@ -108,11 +292,11 @@ export const addOrderItems = async (req, res, next) => {
 
             const paymentUrl = buildVNPayUrl(createdOrder._id, createdOrder.totalPrice, ipAddr);
 
-            return res.status(201).json({ ...createdOrder.toObject(), paymentUrl });
+            return res.status(201).json({ ...withStatusHistory(createdOrder), paymentUrl });
         }
 
         // 4. COD: return order as-is
-        return res.status(201).json(createdOrder);
+        return res.status(201).json(withStatusHistory(createdOrder));
 
     } catch (error) {
         console.error('Create order error:', error);
@@ -125,7 +309,7 @@ export const addOrderItems = async (req, res, next) => {
 export const getMyOrders = async (req, res, next) => {
     try {
         const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
-        res.json(orders);
+        res.json(orders.map(withStatusHistory));
     } catch (error) {
         next(error);
     }
@@ -141,7 +325,7 @@ export const getOrders = async (req, res, next) => {
             .populate('user', 'username displayName email')
             .sort({ createdAt: -1 });
 
-        res.json(orders);
+        res.json(orders.map(withStatusHistory));
     } catch (error) {
         next(error);
     }
@@ -191,9 +375,15 @@ export const updateOrderStatus = async (req, res, next) => {
             order.isDelivered = true;
             order.deliveredAt = new Date();
         }
+        await awardLoyaltyPointsIfEligible(order);
+        appendStatusHistory(order, {
+            status,
+            note: ORDER_STATUS_NOTES[status],
+            user: req.user,
+        });
 
         const updatedOrder = await order.save();
-        res.json(updatedOrder);
+        res.json(withStatusHistory(updatedOrder));
     } catch (error) {
         next(error);
     }
@@ -228,11 +418,19 @@ export const requestOrderCancellation = async (req, res, next) => {
         order.cancelStatus = 'pending';
         order.cancelResolvedAt = undefined;
         order.cancelRejectionReason = undefined;
+        appendStatusHistory(order, {
+            status: 'CancelRequested',
+            note: order.cancelReason
+                ? `${ORDER_STATUS_NOTES.CancelRequested}: ${order.cancelReason}`
+                : ORDER_STATUS_NOTES.CancelRequested,
+            user: req.user,
+            updatedAt: order.cancelRequestedAt,
+        });
 
         const updatedOrder = await order.save();
         res.status(200).json({
             message: 'Yêu cầu hủy đơn đã được gửi.',
-            order: updatedOrder,
+            order: withStatusHistory(updatedOrder),
         });
     } catch (error) {
         next(error);
@@ -260,17 +458,31 @@ export const resolveOrderCancellation = async (req, res, next) => {
             order.cancelStatus = 'approved';
             order.cancelResolvedAt = new Date();
             order.cancelRejectionReason = undefined;
+            appendStatusHistory(order, {
+                status: 'Cancelled',
+                note: ORDER_STATUS_NOTES.Cancelled,
+                user: req.user,
+                updatedAt: order.cancelResolvedAt,
+            });
         } else if (action === 'reject') {
             order.cancelRequested = false;
             order.cancelStatus = 'rejected';
             order.cancelResolvedAt = new Date();
             order.cancelRejectionReason = String(reason || '').trim();
+            appendStatusHistory(order, {
+                status: 'CancelRejected',
+                note: order.cancelRejectionReason
+                    ? `${ORDER_STATUS_NOTES.CancelRejected}: ${order.cancelRejectionReason}`
+                    : ORDER_STATUS_NOTES.CancelRejected,
+                user: req.user,
+                updatedAt: order.cancelResolvedAt,
+            });
         } else {
             return res.status(400).json({ message: 'Hành động xử lý yêu cầu hủy không hợp lệ.' });
         }
 
         const updatedOrder = await order.save();
-        res.status(200).json(updatedOrder);
+        res.status(200).json(withStatusHistory(updatedOrder));
     } catch (error) {
         next(error);
     }
@@ -283,7 +495,7 @@ export const getOrderById = async (req, res, next) => {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
         }
         if (req.user.role === 'admin' || order.user._id.equals(req.user._id)) {
-            return res.json(order);
+            return res.json(withStatusHistory(order));
         }
         return res.status(403).json({ message: 'Không có quyền xem đơn hàng này' });
     } catch (error) {

@@ -26,7 +26,6 @@ export function useProducts(filters: ProductFilters = {}): UseProductsResult {
     const refetch = useCallback(() => setTick((t) => t + 1), []);
 
     // Serialize filters to detect real changes without causing infinite loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const filterKey = JSON.stringify(filters);
 
     useEffect(() => {
@@ -42,10 +41,9 @@ export function useProducts(filters: ProductFilters = {}): UseProductsResult {
                     setTotal(res.total);
                     setTotalPages(res.totalPages);
                 }
-            } catch (err: unknown) {
+            } catch {
                 if (!cancelled) {
-                    const msg = err instanceof Error ? err.message : "Không thể tải sản phẩm.";
-                    setError(msg);
+                    setError("Không thể tải sản phẩm. Vui lòng thử lại.");
                 }
             } finally {
                 if (!cancelled) setLoading(false);
@@ -54,7 +52,6 @@ export function useProducts(filters: ProductFilters = {}): UseProductsResult {
 
         fetch();
         return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterKey, tick]);
 
     return { products, total, totalPages, loading, error, refetch };

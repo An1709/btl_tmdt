@@ -11,6 +11,13 @@ const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const getErrorMessage = (error: unknown, fallback: string) =>
     (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
 
+const MEMBERSHIP_NEXT_POINTS: Record<string, number | null> = {
+    Đồng: 100,
+    Bạc: 300,
+    Vàng: 700,
+    "Kim cương": null,
+};
+
 const ProfilePage = () => {
     const { user, fetchMe, setUser } = useAuthStore();
     const [form, setForm] = useState({
@@ -34,6 +41,13 @@ const ProfilePage = () => {
     }, []);
 
     const inputCls = "w-full px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground";
+    const loyaltyPoints = user?.loyaltyPoints ?? 0;
+    const membershipLevel = user?.membershipLevel ?? "Đồng";
+    const nextLevelPoints = MEMBERSHIP_NEXT_POINTS[membershipLevel];
+    const previousLevelPoints = membershipLevel === "Đồng" ? 0 : membershipLevel === "Bạc" ? 100 : membershipLevel === "Vàng" ? 300 : 700;
+    const progressPercent = nextLevelPoints
+        ? Math.min(Math.max(((loyaltyPoints - previousLevelPoints) / (nextLevelPoints - previousLevelPoints)) * 100, 0), 100)
+        : 100;
 
     const clearAvatarSelection = () => {
         setSelectedAvatar(null);
@@ -132,6 +146,32 @@ const ProfilePage = () => {
             <Sidebar mode="user" />
             <main className="flex-1 flex flex-col gap-6">
                 <h1 className="section-title">👤 Tài Khoản</h1>
+
+                <div className="bg-white dark:bg-card rounded-2xl border border-border p-6">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div>
+                            <p className="text-sm text-muted-foreground">Điểm thành viên</p>
+                            <p className="text-3xl font-black text-[var(--pet-coral)]">{loyaltyPoints}</p>
+                        </div>
+                        <div className="md:text-right">
+                            <p className="text-sm text-muted-foreground">Hạng thành viên</p>
+                            <p className="text-2xl font-black text-foreground">{membershipLevel}</p>
+                        </div>
+                    </div>
+                    <div className="mt-5">
+                        <div className="h-3 rounded-full bg-muted overflow-hidden">
+                            <div
+                                className="h-full rounded-full bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] transition-all"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                            {nextLevelPoints
+                                ? `Còn ${Math.max(nextLevelPoints - loyaltyPoints, 0)} điểm để lên hạng tiếp theo.`
+                                : "Bạn đang ở hạng thành viên cao nhất."}
+                        </p>
+                    </div>
+                </div>
 
                 <div className="bg-white dark:bg-card rounded-2xl border border-border p-6">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">

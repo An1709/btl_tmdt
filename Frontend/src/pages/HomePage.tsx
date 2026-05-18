@@ -27,17 +27,32 @@ const HomePage = () => {
   const [activeCategory, setActiveCategory] = useState("all");
   const [email, setEmail] = useState("");
 
-  const [pets, setPets] = useState<Product[]>([]);
+  const [personalizedProducts, setPersonalizedProducts] = useState<Product[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [accessories, setAccessories] = useState<Product[]>([]);
-  const [petsLoading, setPetsLoading] = useState(true);
+  const [personalizedLoading, setPersonalizedLoading] = useState(true);
+  const [personalizedError, setPersonalizedError] = useState("");
+  const [featuredLoading, setFeaturedLoading] = useState(true);
+  const [featuredError, setFeaturedError] = useState("");
   const [accLoading, setAccLoading] = useState(true);
 
-  // Fetch featured pets and accessories concurrently on mount
+  // Fetch homepage product sections concurrently on mount
   useEffect(() => {
-    productService.getAll({ sort: "popular", limit: 6 })
-      .then((res) => setPets(res.data.filter((p) => p.category !== "accessory")))
-      .catch(() => {/* silently fail — home page shows empty sections on error */ })
-      .finally(() => setPetsLoading(false));
+    productService.getPersonalizedRecommendations(8)
+      .then((products) => setPersonalizedProducts(products.slice(0, 8)))
+      .catch(() => {
+        setPersonalizedProducts([]);
+        setPersonalizedError("Không thể tải gợi ý dành cho bạn.");
+      })
+      .finally(() => setPersonalizedLoading(false));
+
+    productService.getFeatured(8)
+      .then((products) => setFeaturedProducts(products.slice(0, 8)))
+      .catch(() => {
+        setFeaturedProducts([]);
+        setFeaturedError("Không thể tải sản phẩm nổi bật.");
+      })
+      .finally(() => setFeaturedLoading(false));
 
     productService.getAll({ category: "accessory", sort: "popular", limit: 6 })
       .then((res) => setAccessories(res.data))
@@ -181,23 +196,77 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  3. FEATURED PETS                                             */}
+      {/*  3. PERSONALIZED RECOMMENDATIONS                               */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {petsLoading ? (
-          <ProductRowSkeleton />
-        ) : (
+        {personalizedLoading && (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">Đang tải gợi ý dành cho bạn...</p>
+            <ProductRowSkeleton />
+          </>
+        )}
+
+        {!personalizedLoading && personalizedError && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">{personalizedError}</p>
+          </div>
+        )}
+
+        {!personalizedLoading && !personalizedError && personalizedProducts.length === 0 && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">Chưa có sản phẩm gợi ý.</p>
+          </div>
+        )}
+
+        {!personalizedLoading && !personalizedError && personalizedProducts.length > 0 && (
           <ProductList
-            products={pets}
-            title="Thú Cưng Nổi Bật ✨"
-            subtitle="Những người bạn đồng hành đang chờ được yêu thương"
-            viewAllLink="/shop?type=pets"
+            products={personalizedProducts}
+            title="Có thể bạn sẽ thích"
+            subtitle="Gợi ý dựa trên giỏ hàng, yêu thích và lịch sử mua sắm của bạn"
+            viewAllLink="/shop"
           />
         )}
       </section>
 
       {/* ============================================================ */}
-      {/*  4. WHY PETMART FEATURES                                      */}
+      {/*  4. FEATURED PRODUCTS                                          */}
+      {/* ============================================================ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {featuredLoading && (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">Đang tải sản phẩm nổi bật...</p>
+            <ProductRowSkeleton />
+          </>
+        )}
+
+        {!featuredLoading && featuredError && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">{featuredError}</p>
+          </div>
+        )}
+
+        {!featuredLoading && !featuredError && featuredProducts.length === 0 && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">Chưa có sản phẩm nổi bật.</p>
+          </div>
+        )}
+
+        {!featuredLoading && !featuredError && featuredProducts.length > 0 && (
+          <ProductList
+            products={featuredProducts}
+            title="Thú cưng và phụ kiện nổi bật ✨"
+            subtitle="Những sản phẩm được yêu thích nhất dựa trên đánh giá và mức độ quan tâm"
+            viewAllLink="/shop"
+          />
+        )}
+      </section>
+
+      {/* ============================================================ */}
+      {/*  5. WHY PETMART FEATURES                                      */}
       {/* ============================================================ */}
       <section className="bg-muted/40 dark:bg-muted/20 py-16 mt-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -222,7 +291,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  5. ACCESSORIES SECTION                                       */}
+      {/*  6. ACCESSORIES SECTION                                       */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {accLoading ? (
@@ -238,7 +307,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  6. BANNER PROMO STRIP                                        */}
+      {/*  7. BANNER PROMO STRIP                                        */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div className="rounded-3xl overflow-hidden relative bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] p-8 md:p-12 flex flex-col md:flex-row items-center gap-6">
@@ -263,7 +332,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  7. NEWSLETTER CTA                                            */}
+      {/*  8. NEWSLETTER CTA                                            */}
       {/* ============================================================ */}
       <section className="bg-foreground dark:bg-card py-16">
         <div className="max-w-2xl mx-auto px-4 text-center">
@@ -290,7 +359,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  8. ADMIN QUICK-ACCESS                                        */}
+      {/*  9. ADMIN QUICK-ACCESS                                        */}
       {/* ============================================================ */}
       {isAdmin && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

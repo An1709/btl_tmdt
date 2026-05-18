@@ -9,6 +9,11 @@ interface CartResponse {
     }[];
 }
 
+export interface ComboCartItemPayload {
+    productId: string;
+    quantity?: number;
+}
+
 const mapCart = (data: CartResponse): CartItem[] =>
     (data.items ?? [])
         .filter((item) => item.product)
@@ -25,6 +30,11 @@ export const cartService = {
 
     addItem: async (productId: string, quantity = 1): Promise<CartItem[]> => {
         const res = await api.post<CartResponse>("/cart", { productId, quantity });
+        return mapCart(res.data);
+    },
+
+    addCombo: async (items: ComboCartItemPayload[]): Promise<CartItem[]> => {
+        const res = await api.post<CartResponse>("/cart/add-combo", { items });
         return mapCart(res.data);
     },
 

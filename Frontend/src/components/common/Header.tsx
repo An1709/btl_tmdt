@@ -1,18 +1,17 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { useCartStore } from "@/stores/useCartStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import UserAvatar from "@/components/common/UserAvatar";
+import ProductSearchBox from "@/components/common/ProductSearchBox";
 
 const Header = () => {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
     const cartCount = useCartStore((s) => s.totalCount)();
     const { isDark, toggleDark } = useUIStore();
     const { user, signOut } = useAuthStore();
-    const navigate = useNavigate();
 
     const navLinks = [
         { label: "Trang Chủ", to: "/" },
@@ -22,14 +21,6 @@ const Header = () => {
     ];
 
     const isAdmin = user?.role === "admin" || user?.role === "staff";
-
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            navigate(`/shop?q=${encodeURIComponent(searchQuery.trim())}`);
-            setSearchOpen(false);
-        }
-    };
 
     return (
         <header className="sticky top-0 z-50 w-full">
@@ -197,20 +188,13 @@ const Header = () => {
                     {/* ===== SEARCH BAR (expanded) ===== */}
                     {searchOpen && (
                         <div className="pb-3 animate-fade-in-up">
-                            <form onSubmit={handleSearch} className="flex gap-2">
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    id="header-search-input"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Tìm thú cưng, phụ kiện..."
-                                    className="flex-1 px-4 py-2.5 rounded-xl border border-border bg-muted/50 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)]
-                             transition-all placeholder:text-muted-foreground"
-                                />
-                                <button type="submit" className="btn-pet-primary py-2 px-5 text-sm">Tìm</button>
-                            </form>
+                            <ProductSearchBox
+                                inputId="header-search-input"
+                                autoFocus
+                                wrapperClassName="w-full"
+                                inputClassName="w-full px-4 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground"
+                                onSearchComplete={() => setSearchOpen(false)}
+                            />
                         </div>
                     )}
                 </div>

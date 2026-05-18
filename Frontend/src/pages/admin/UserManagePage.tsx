@@ -197,6 +197,16 @@ const UserManagePage = () => {
                 </span>
             ),
         },
+        {
+            key: "loyalty",
+            header: "Thành viên",
+            render: (u) => (
+                <div className="text-xs">
+                    <p className="font-bold text-foreground">{u.membershipLevel ?? "Đồng"}</p>
+                    <p className="text-muted-foreground">{u.loyaltyPoints ?? 0} điểm</p>
+                </div>
+            ),
+        },
         { key: "joined", header: "Ngày tham gia", render: (u) => formatDate(u.createdAt ?? "") },
         {
             key: "status",

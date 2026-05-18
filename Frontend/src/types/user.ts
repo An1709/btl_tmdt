@@ -13,6 +13,9 @@ export interface User {
     address?: string;
     isBlocked?: boolean;
     isEmailVerified?: boolean;
+    loyaltyPoints?: number;
+    membershipLevel?: "Đồng" | "Bạc" | "Vàng" | "Kim cương";
+    pointsToNextLevel?: number;
     createdAt?: string;
     updatedAt?: string;
 }

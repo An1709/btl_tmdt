@@ -1,9 +1,19 @@
 import api from "@/lib/axios";
+import type { Coupon } from "@/types/coupon";
 
 export interface CouponCheckResult {
     valid: boolean;
     discountAmount: number;
     couponId: string;
+}
+
+export interface CouponPayload {
+    code: string;
+    discountType: "percent" | "fixed";
+    discountValue: number;
+    minOrderValue: number;
+    usageLimit: number;
+    endDate: string;
 }
 
 export const couponService = {
@@ -16,18 +26,20 @@ export const couponService = {
         return res.data;
     },
 
-    getAllCoupons: async () => {
-        const res = await api.get("/coupons");
+    getAllCoupons: async (limit?: number): Promise<Coupon[]> => {
+        const res = await api.get<Coupon[]>("/coupons", {
+            params: limit ? { limit } : undefined,
+        });
         return res.data;
     },
 
-    createCoupon: async (data: Record<string, unknown>) => {
-        const res = await api.post("/coupons", data);
+    createCoupon: async (data: CouponPayload): Promise<Coupon> => {
+        const res = await api.post<Coupon>("/coupons", data);
         return res.data;
     },
 
-    updateCoupon: async (id: string, data: Record<string, unknown>) => {
-        const res = await api.put(`/coupons/${id}`, data);
+    updateCoupon: async (id: string, data: CouponPayload): Promise<Coupon> => {
+        const res = await api.patch<Coupon>(`/coupons/${id}`, data);
         return res.data;
     },
 

@@ -69,13 +69,23 @@ const SEARCH_SYNONYMS = {
 };
 
 const PET_CATEGORY_TERMS = {
-    dog: ['chó', 'dog', 'puppy', 'cun'],
+    dog: ['cho', 'dog', 'puppy', 'cun'],
     cat: ['meo', 'cat', 'kitten'],
     rabbit: ['tho', 'rabbit', 'bunny'],
     hamster: ['hamster'],
     parrot: ['vet', 'chim', 'bird', 'parrot'],
     fish: ['ca', 'fish', 'aquarium', 'thuy sinh'],
     accessory: ['phu kien', 'accessory', 'accessories'],
+};
+
+const PET_CATEGORY_LABELS = {
+    dog: 'chó',
+    cat: 'mèo',
+    rabbit: 'thỏ',
+    hamster: 'hamster',
+    parrot: 'vẹt',
+    fish: 'cá',
+    accessory: 'phụ kiện',
 };
 
 const PRODUCT_TYPE_TERMS = [
@@ -106,6 +116,10 @@ const normalizeText = (value = '') =>
 const hasAnyKeyword = (normalizedMessage, keywords) =>
     keywords.some((keyword) => normalizedMessage.includes(keyword));
 
+const hasDogPurchaseContext = (normalizedMessage) =>
+    /\b(can|muon|tim|mua|goi y|tu van|san pham|do|thuc an|phu kien)\b.*\bcho\b/.test(normalizedMessage)
+    || /\bcho\b.*\b(can|muon|tim|mua|goi y|tu van|san pham|do|thuc an|phu kien)\b/.test(normalizedMessage);
+
 const detectIntent = (message) => {
     const normalizedMessage = normalizeText(message);
 
@@ -118,7 +132,8 @@ const detectIntent = (message) => {
 
     intent.product = intent.product
         || /\b(chó|mèo|thỏ|vẹt|chim|cá|hamster)\b/i.test(message)
-        || /\b(cho\s+cho|meo|tho|vet|chim|ca|hamster|dog|cat|rabbit|bird|parrot|fish|aquarium)\b/.test(normalizedMessage);
+        || /\b(cho\s+cho|meo|tho|vet|chim|ca|hamster|dog|cat|rabbit|bird|parrot|fish|aquarium)\b/.test(normalizedMessage)
+        || hasDogPurchaseContext(normalizedMessage);
 
     return intent;
 };
@@ -144,7 +159,7 @@ const getRawTerms = (message) =>
 const getPetSpecies = (message) => {
     const normalizedMessage = normalizeText(message);
     if (/\b(mèo|meo|cat|kitten)\b/i.test(message) || /\b(meo|cat|kitten)\b/.test(normalizedMessage)) return 'cat';
-    if (/\b(chó|dog|puppy|cún)\b/i.test(message) || /\b(dog|puppy|cun)\b/.test(normalizedMessage) || /\bcho\s+cho\b/.test(normalizedMessage)) return 'dog';
+    if (/\b(chó|dog|puppy|cún)\b/i.test(message) || /\b(dog|puppy|cun)\b/.test(normalizedMessage) || /\bcho\s+cho\b/.test(normalizedMessage) || hasDogPurchaseContext(normalizedMessage)) return 'dog';
     if (/\b(thỏ|rabbit|bunny)\b/i.test(message) || /\b(tho|rabbit|bunny)\b/.test(normalizedMessage)) return 'rabbit';
     if (/\bhamster\b/i.test(message) || /\bhamster\b/.test(normalizedMessage)) return 'hamster';
     if (/\b(vẹt|chim|bird|parrot)\b/i.test(message) || /\b(vet|chim|bird|parrot)\b/.test(normalizedMessage)) return 'parrot';
@@ -268,15 +283,38 @@ const getProductSearchText = (product) => normalizeText([
 const productMatchesSpecies = (product, species) => {
     if (!species) return true;
     const productName = normalizeText(product.name);
-    const categoryText = normalizeText([product.category?.name, product.category?.slug].filter(Boolean).join(' '));
+    const categoryName = normalizeText(product.category?.name || '');
+    const categorySlug = normalizeText(product.category?.slug || '');
+    const categoryText = `${categoryName} ${categorySlug}`.trim();
     const descriptiveText = normalizeText([product.description, formatSpecifications(product.specifications)].filter(Boolean).join(' '));
 
-    if (species === 'dog' && /\bcho\b/.test(`${productName} ${categoryText}`)) {
+    if (categorySlug === species) {
         return true;
     }
 
+    if (species === 'accessory') {
+        return /\b(phu kien|accessory|accessories)\b/.test(categoryText)
+            || /\b(phu kien|accessory|accessories)\b/.test(`${productName} ${descriptiveText}`);
+    }
+
     const terms = PET_CATEGORY_TERMS[species] || [];
-    return terms.some((term) => productName.includes(term) || categoryText.includes(term) || descriptiveText.includes(term));
+    const hasCategoryMatch = terms.some((term) => new RegExp(`\\b${escapeRegex(term)}\\b`).test(categoryText));
+
+    if (hasCategoryMatch) {
+        return true;
+    }
+
+    const searchableText = `${productName} ${descriptiveText}`;
+
+    return terms.some((term) => {
+        if (species === 'dog' && term === 'cho') {
+            return /\b(cho|cun)\b/.test(categoryText)
+                || /\b(thuc an|hat|pate|snack|do choi|vong co|day dat|ao|sua tam|cham soc|phu kien)\s+(cho|cun)\b/.test(searchableText)
+                || /\b(cho|cun)\s+(con|lon|nho|to|truong thanh)\b/.test(searchableText);
+        }
+
+        return new RegExp(`\\b${escapeRegex(term)}\\b`).test(searchableText);
+    });
 };
 
 const getProductMatchScore = (product, keywords) => {
@@ -484,6 +522,7 @@ const findRelevantProducts = async (message, intent) => {
     try {
         const keywords = extractProductKeywords(message, intent);
         const petSpecies = getPetSpecies(message);
+        const strictCategoryMode = Boolean(petSpecies);
         const filter = await buildProductFilter(message, intent, keywords);
         const products = await Product.find(filter)
             .populate('category', 'name slug')
@@ -509,6 +548,8 @@ const findRelevantProducts = async (message, intent) => {
         return {
             products: sortProductsForSupport(petSpecies ? speciesProducts : products, keywords).slice(0, PRODUCT_LIMIT),
             lookupFailed: false,
+            strictCategoryMode,
+            requestedSpecies: petSpecies,
         };
     } catch {
         return {
@@ -602,6 +643,11 @@ const getProductReply = async (message, intent, user) => {
     }
 
     if (!productContext.products.length) {
+        if (productContext.strictCategoryMode && productContext.requestedSpecies) {
+            const label = PET_CATEGORY_LABELS[productContext.requestedSpecies] || 'danh mục này';
+            return `Hiện tại mình chưa tìm thấy sản phẩm phù hợp cho ${label}.`;
+        }
+
         return 'Hiện tại mình chưa tìm thấy sản phẩm phù hợp. Bạn có thể thử tìm theo chó, mèo, thỏ, hamster, vẹt, cá hoặc phụ kiện.';
     }
 

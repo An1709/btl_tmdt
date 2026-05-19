@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import StatCard from "@/components/features/admin/StatCard";
 import { adminDashboardService, type AdminDashboardStats } from "@/services/adminDashboardService";
+import { couponService } from "@/services/couponService";
+import type { Coupon } from "@/types/coupon";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { ORDER_STATUS_LABELS } from "@/utils/constants";
 
@@ -42,10 +44,50 @@ const MiniBar = ({ value, max }: { value: number; max: number }) => {
     );
 };
 
+const formatCouponValue = (coupon: Coupon) => {
+    const value = coupon.discountValue ?? coupon.value ?? 0;
+    return coupon.discountType === "percent" ? `${value}%` : formatCurrency(value);
+};
+
+const getCouponStatus = (coupon: Coupon) => {
+    const endDate = coupon.endDate ?? coupon.expirationDate;
+    const isExpired = endDate ? new Date(endDate).getTime() < Date.now() : false;
+    const isUsageEnded = coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit;
+
+    if (isExpired) {
+        return {
+            label: "Hết hạn",
+            className: "bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300",
+        };
+    }
+
+    if (isUsageEnded) {
+        return {
+            label: "Hết lượt",
+            className: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
+        };
+    }
+
+    if (coupon.isActive === false) {
+        return {
+            label: "Tạm tắt",
+            className: "bg-muted text-muted-foreground",
+        };
+    }
+
+    return {
+        label: "Đang hoạt động",
+        className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    };
+};
+
 const DashboardPage = () => {
     const [stats, setStats] = useState<AdminDashboardStats | null>(null);
+    const [coupons, setCoupons] = useState<Coupon[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [couponsLoading, setCouponsLoading] = useState(true);
+    const [couponsError, setCouponsError] = useState("");
 
     const loadStats = useCallback(() => {
         setLoading(true);
@@ -60,9 +102,23 @@ const DashboardPage = () => {
             .finally(() => setLoading(false));
     }, []);
 
+    const loadCoupons = useCallback(() => {
+        setCouponsLoading(true);
+        setCouponsError("");
+
+        couponService.getAllCoupons(8)
+            .then((data) => setCoupons(data))
+            .catch(() => {
+                setCoupons([]);
+                setCouponsError("Không thể tải danh sách mã giảm giá. Vui lòng thử lại.");
+            })
+            .finally(() => setCouponsLoading(false));
+    }, []);
+
     useEffect(() => {
         void Promise.resolve().then(loadStats);
-    }, [loadStats]);
+        void Promise.resolve().then(loadCoupons);
+    }, [loadCoupons, loadStats]);
 
     const maxRevenue = useMemo(
         () => Math.max(...(stats?.revenueChart.map((item) => item.revenue) ?? [0]), 0),
@@ -304,6 +360,60 @@ const DashboardPage = () => {
                                             <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">{formatDate(order.createdAt)}</td>
                                         </tr>
                                     ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </SectionCard>
+
+                <SectionCard title="Mã giảm giá">
+                    {couponsLoading ? (
+                        <EmptyState text="Đang tải mã giảm giá..." />
+                    ) : couponsError ? (
+                        <EmptyState text={couponsError} />
+                    ) : coupons.length === 0 ? (
+                        <EmptyState text="Chưa có mã giảm giá nào." />
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[720px] text-sm">
+                                <thead>
+                                    <tr className="border-b border-border text-left">
+                                        {["Mã", "Loại giảm", "Giá trị", "Số lượt dùng", "Hạn sử dụng", "Trạng thái"].map((header) => (
+                                            <th key={header} className="pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">
+                                                {header}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {coupons.map((coupon) => {
+                                        const status = getCouponStatus(coupon);
+
+                                        return (
+                                            <tr key={coupon._id} className="border-b border-border/50 last:border-b-0">
+                                                <td className="py-3 pr-4">
+                                                    <span className="font-mono font-bold text-foreground">{coupon.code}</span>
+                                                </td>
+                                                <td className="py-3 pr-4 text-muted-foreground">
+                                                    {coupon.discountType === "percent" ? "Phần trăm" : "Số tiền"}
+                                                </td>
+                                                <td className="py-3 pr-4 font-bold text-[var(--pet-coral)] whitespace-nowrap">
+                                                    {formatCouponValue(coupon)}
+                                                </td>
+                                                <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">
+                                                    {coupon.usedCount}/{coupon.usageLimit > 0 ? coupon.usageLimit : "Không giới hạn"}
+                                                </td>
+                                                <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">
+                                                    {formatDate(coupon.endDate ?? coupon.expirationDate)}
+                                                </td>
+                                                <td className="py-3 pr-4">
+                                                    <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap ${status.className}`}>
+                                                        {status.label}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

@@ -126,6 +126,8 @@ const buildVisionReply = (result: PetVisionResponse) => {
 
     if (productLines.length > 0) {
         parts.push(`Sản phẩm phù hợp:\n${productLines.join("\n")}`);
+    } else {
+        parts.push("Hiện tại chưa có sản phẩm gợi ý phù hợp.");
     }
 
     return parts.join("\n\n");
@@ -388,10 +390,19 @@ const ChatWidget = () => {
     };
 
     return (
-        <div className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end gap-3">
-            {open && (
-                <section className="w-[calc(100vw-2rem)] max-w-sm h-[520px] bg-white dark:bg-card rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden animate-fade-in-up">
-                    <header className="bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] p-4 flex items-center gap-3">
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
+            {open ? (
+                <section
+                    className="w-[calc(100vw-2rem)] max-w-sm bg-white dark:bg-card rounded-2xl shadow-2xl border border-border overflow-hidden"
+                    style={{
+                        display: "grid",
+                        gridTemplateRows: selectedImagePreviewUrl
+                            ? "auto minmax(0, 1fr) auto auto"
+                            : "auto minmax(0, 1fr) auto",
+                        height: "min(520px, calc(100vh - 2rem))",
+                    }}
+                >
+                    <header className="shrink-0 bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] p-4 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white">
                             <MessageCircle className="w-5 h-5" aria-hidden="true" />
                         </div>
@@ -412,14 +423,14 @@ const ChatWidget = () => {
                         </button>
                     </header>
 
-                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-muted/20 dark:bg-background/20">
+                    <div className="min-h-0 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3 bg-muted/20 dark:bg-background/20">
                         {visibleMessages.map((message, index) => (
                             <div
                                 key={`${message.timestamp}-${index}`}
                                 className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                             >
                                 <div
-                                    className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap shadow-sm
+                                    className={`max-w-[82%] min-w-0 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap shadow-sm
                                     ${message.role === "user"
                                             ? "bg-[var(--pet-coral)] text-white rounded-br-md"
                                             : "bg-white dark:bg-card text-foreground border border-border rounded-bl-md"
@@ -429,7 +440,7 @@ const ChatWidget = () => {
                                         <img
                                             src={message.imageUrl}
                                             alt="Ảnh thú cưng đã gửi"
-                                            className="mb-2 max-h-40 rounded-xl object-cover"
+                                            className="mb-2 block w-full max-w-[220px] max-h-[180px] rounded-xl object-cover"
                                         />
                                     )}
                                     {message.content}
@@ -460,29 +471,29 @@ const ChatWidget = () => {
                         <div ref={bottomRef} />
                     </div>
 
-                    <div className="shrink-0 border-t border-border bg-white dark:bg-card">
-                        {selectedImagePreviewUrl && (
-                            <div className="px-3 pt-3">
-                                <div className="relative inline-block max-w-full">
-                                    <img
-                                        src={selectedImagePreviewUrl}
-                                        alt="Ảnh xem trước"
-                                        className="h-24 w-24 max-h-[120px] max-w-full rounded-xl border border-border object-cover"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={clearSelectedImage}
-                                        className="absolute -right-2 -top-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow"
-                                        aria-label="Xóa ảnh đã chọn"
-                                    >
-                                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                                    </button>
-                                </div>
+                    {selectedImagePreviewUrl && (
+                        <div className="shrink-0 border-t border-border bg-white dark:bg-card px-3 py-3 max-h-[132px] overflow-hidden">
+                            <div className="relative inline-block max-w-full align-top">
+                                <img
+                                    src={selectedImagePreviewUrl}
+                                    alt="Ảnh xem trước"
+                                    className="block h-24 w-24 max-h-[120px] max-w-[120px] rounded-xl border border-border object-cover"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={clearSelectedImage}
+                                    className="absolute -right-2 -top-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow"
+                                    aria-label="Xóa ảnh đã chọn"
+                                >
+                                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
                             </div>
-                        )}
+                        </div>
+                    )}
 
+                    <div className="shrink-0 border-t border-border bg-white dark:bg-card overflow-hidden">
                         <form
-                            className="p-3 flex gap-2"
+                            className="p-3 flex items-end gap-2"
                             onSubmit={(event) => {
                                 event.preventDefault();
                                 void sendMessage();
@@ -512,7 +523,7 @@ const ChatWidget = () => {
                                 onPaste={handlePaste}
                                 placeholder="Nhập tin nhắn hoặc dán ảnh..."
                                 rows={1}
-                                className="flex-1 min-h-10 max-h-24 px-3 py-2 rounded-xl border border-border bg-muted/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground"
+                                className="flex-1 min-h-10 max-h-24 overflow-y-auto px-3 py-2 rounded-xl border border-border bg-muted/40 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground"
                             />
                             <button
                                 type="submit"
@@ -528,16 +539,16 @@ const ChatWidget = () => {
                         </p>
                     </div>
                 </section>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="w-14 h-14 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] text-white shadow-glow flex items-center justify-center hover:-translate-y-0.5 active:scale-95 transition-all"
+                    aria-label="Mở trợ lý PetMart"
+                >
+                    <MessageCircle className="w-6 h-6" aria-hidden="true" />
+                </button>
             )}
-
-            <button
-                type="button"
-                onClick={() => setOpen((current) => !current)}
-                className="w-14 h-14 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] text-white shadow-glow flex items-center justify-center hover:-translate-y-0.5 active:scale-95 transition-all"
-                aria-label={open ? "Đóng trợ lý PetMart" : "Mở trợ lý PetMart"}
-            >
-                {open ? <X className="w-6 h-6" aria-hidden="true" /> : <MessageCircle className="w-6 h-6" aria-hidden="true" />}
-            </button>
         </div>
     );
 };

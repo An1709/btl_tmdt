@@ -13,12 +13,79 @@ const backendRoot = path.resolve(__dirname, '..', '..');
 const defaultModelPath = path.resolve(backendRoot, 'ml', 'models', 'pet_breed_model.keras');
 const defaultLabelsPath = path.resolve(backendRoot, 'ml', 'labels.json');
 
-const SPECIES_CATEGORY_SLUG = {
-    Chó: 'dog',
-    Mèo: 'cat',
+const SPECIES_MATCHERS = {
+    Chó: {
+        exactTerms: ['chó', 'cún'],
+        normalizedTerms: ['dog', 'puppy'],
+    },
+    Mèo: {
+        exactTerms: ['mèo'],
+        normalizedTerms: ['meo', 'cat', 'kitten'],
+    },
 };
 
-const PRODUCT_FIELDS = '_id name slug price images category stock specifications';
+const PRODUCT_FIELDS = '_id name slug price images category stock specifications description sold views averageRating reviewCount';
+
+const normalizeText = (value = '') => String(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+
+const includesSpeciesTerm = (value, matcher) => {
+    const rawValue = String(value || '').toLowerCase();
+    const normalizedValue = normalizeText(value);
+
+    return matcher.exactTerms.some((term) => rawValue.includes(term))
+        || matcher.normalizedTerms.some((term) => normalizedValue.includes(normalizeText(term)));
+};
+
+const getSpecificationText = (specifications = {}) => {
+    if (specifications instanceof Map) {
+        return [...specifications.entries()].map(([key, value]) => `${key} ${value}`).join(' ');
+    }
+
+    if (typeof specifications === 'object' && specifications !== null) {
+        return Object.entries(specifications).map(([key, value]) => `${key} ${value}`).join(' ');
+    }
+
+    return '';
+};
+
+const getCategoryText = (category) => {
+    if (!category) return '';
+    if (typeof category === 'string') return category;
+
+    return [
+        category.name,
+        category.slug,
+        category.description,
+    ].filter(Boolean).join(' ');
+};
+
+const getProductSpeciesScore = (product, matcher, matchedCategoryIds) => {
+    const categoryId = String(product.category?._id || product.category || '');
+    const categoryText = getCategoryText(product.category);
+    const nameText = product.name || '';
+    const descriptionText = product.description || '';
+    const specificationText = getSpecificationText(product.specifications);
+
+    let score = 0;
+    if (categoryId && matchedCategoryIds.has(categoryId)) score += 80;
+    if (includesSpeciesTerm(categoryText, matcher)) score += 80;
+    if (includesSpeciesTerm(nameText, matcher)) score += 45;
+    if (includesSpeciesTerm(specificationText, matcher)) score += 25;
+    if (includesSpeciesTerm(descriptionText, matcher)) score += 15;
+
+    return score;
+};
+
+const getPopularityScore = (product) => (
+    (Number(product.averageRating) || 0) * 5
+    + (Number(product.reviewCount) || 0) * 2
+    + (Number(product.sold) || 0)
+    + (Number(product.views) || 0) * 0.05
+);
 
 const parseJsonOutput = (output) => {
     const trimmed = output.trim();
@@ -134,18 +201,49 @@ export const runPetVisionInference = (imagePath) => {
 };
 
 export const getSuggestedProductsForSpecies = async (species, limit = DEFAULT_LIMIT) => {
-    const categorySlug = SPECIES_CATEGORY_SLUG[species];
-    if (!categorySlug) return [];
+    const matcher = SPECIES_MATCHERS[species];
+    if (!matcher) return [];
 
-    const category = await Category.findOne({ slug: categorySlug }).select('_id name slug').lean();
-    if (!category) return [];
+    const categories = await Category.find().select('_id name slug description').lean();
+    const matchedCategoryIds = new Set(
+        categories
+            .filter((category) => includesSpeciesTerm(getCategoryText(category), matcher))
+            .map((category) => String(category._id)),
+    );
 
-    const products = await Product.find({ category: category._id })
+    const candidates = await Product.find({})
         .select(PRODUCT_FIELDS)
         .populate('category', 'name slug')
-        .sort({ stock: -1, sold: -1, averageRating: -1, createdAt: -1 })
-        .limit(Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, DEFAULT_LIMIT)))
+        .sort({ stock: -1, averageRating: -1, reviewCount: -1, sold: -1, views: -1, createdAt: -1 })
+        .limit(500)
         .lean();
+
+    const scoredProducts = candidates
+        .map((product) => ({
+            product,
+            score: getProductSpeciesScore(product, matcher, matchedCategoryIds),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => {
+            const stockDelta = Number(b.product.stock > 0) - Number(a.product.stock > 0);
+            if (stockDelta !== 0) return stockDelta;
+
+            if (b.score !== a.score) return b.score - a.score;
+
+            return getPopularityScore(b.product) - getPopularityScore(a.product);
+        });
+
+    const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, DEFAULT_LIMIT));
+    const products = scoredProducts.slice(0, safeLimit).map(({ product }) => product);
+
+    if (process.env.NODE_ENV !== 'production') {
+        console.info('[PetVision:suggestions]', {
+            species,
+            matchedCategoryCount: matchedCategoryIds.size,
+            matchedProductCount: scoredProducts.length,
+            returnedProductCount: products.length,
+        });
+    }
 
     return products.map((product) => ({
         _id: product._id,

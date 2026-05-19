@@ -5,6 +5,7 @@ import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
 import { collectionService } from "@/services/collectionService";
+import { calculateDiscountPercent } from "@/utils/format";
 
 interface ProductCardProps {
     product: Product;
@@ -43,6 +44,9 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
     const addItem = useCartStore((s) => s.addItem);
     const { user } = useAuthStore();
     const navigate = useNavigate();
+    const detailPath = `/product/${product.id}`;
+    const discount = calculateDiscountPercent(product.price, product.originalPrice);
+    const hasDiscount = discount >= 1;
     const [added, setAdded] = useState(false);
     const [wishlisted, setWishlisted] = useState(false);
     const [updatingWishlist, setUpdatingWishlist] = useState(false);
@@ -119,15 +123,17 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
         <article className="pet-card flex flex-col group">
             {/* ===== IMAGE ===== */}
             <div className="relative overflow-hidden aspect-square bg-muted/30">
-                <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    loading="lazy"
-                />
+                <Link to={detailPath} aria-label={`Xem chi tiết ${product.name}`} className="block w-full h-full cursor-pointer">
+                    <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        loading="lazy"
+                    />
+                </Link>
 
                 {/* Badge */}
-                {product.badge && (
+                {product.badge && (product.badge !== "sale" || hasDiscount) && (
                     <div className={`absolute top-3 left-3 ${badgeConfig[product.badge].className}`}>
                         {badgeConfig[product.badge].label}
                     </div>
@@ -162,10 +168,12 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
             {/* ===== BODY ===== */}
             <div className="flex flex-col gap-2 p-4 flex-1">
                 {/* Name */}
-                <h3 className="font-bold text-foreground text-base leading-tight line-clamp-1 group-hover:text-[var(--pet-coral)] transition-colors duration-200"
-                    style={{ fontFamily: "'Nunito', sans-serif" }}>
-                    {product.name}
-                </h3>
+                <Link to={detailPath} className="cursor-pointer">
+                    <h3 className="font-bold text-foreground text-base leading-tight line-clamp-1 hover:text-[var(--pet-coral)] transition-colors duration-200"
+                        style={{ fontFamily: "'Nunito', sans-serif" }}>
+                        {product.name}
+                    </h3>
+                </Link>
 
                 {/* Breed & Age */}
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -182,14 +190,14 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
                     <span className="text-lg font-extrabold text-[var(--pet-coral)]">
                         {formatPrice(product.price)}
                     </span>
-                    {product.originalPrice && (
+                    {hasDiscount && product.originalPrice && (
                         <span className="text-xs text-muted-foreground line-through">
                             {formatPrice(product.originalPrice)}
                         </span>
                     )}
-                    {product.originalPrice && (
+                    {hasDiscount && (
                         <span className="text-xs font-semibold text-emerald-600 ml-auto">
-                            -{Math.round((1 - product.price / product.originalPrice) * 100)}%
+                            -{discount}%
                         </span>
                     )}
                 </div>
@@ -197,7 +205,7 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
                 {/* Buttons */}
                 <div className="flex gap-2 mt-2">
                     <Link
-                        to={`/product/${product.id}`}
+                        to={detailPath}
                         className="btn-pet-secondary flex-1 justify-center text-xs py-2"
                     >
                         Xem chi tiết

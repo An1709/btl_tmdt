@@ -4,6 +4,7 @@ import sendEmail, { EmailDeliveryError } from '../utils/sendEmail.js';
 
 const NEW_MEMBER_COUPON_CODE = 'NEWMEMBER';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NEWSLETTER_SEND_ERROR = 'Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.';
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
@@ -24,7 +25,7 @@ export const subscribeNewsletter = async (req, res) => {
     if (!email) {
         return res.status(400).json({
             success: false,
-            message: 'Vui lòng nhập email để nhận mã ưu đãi.',
+            message: 'Vui lòng nhập email để nhận ưu đãi.',
         });
     }
 
@@ -38,6 +39,19 @@ export const subscribeNewsletter = async (req, res) => {
     let subscription;
 
     try {
+        const existingSubscription = await NewsletterSubscription.findOne({
+            email,
+            couponCode: NEW_MEMBER_COUPON_CODE,
+        });
+
+        if (existingSubscription?.sentAt) {
+            return res.status(409).json({
+                success: false,
+                code: 'NEWSLETTER_COUPON_ALREADY_SENT',
+                message: 'Email này đã nhận mã ưu đãi NEWMEMBER.',
+            });
+        }
+
         const coupon = await Coupon.findOne({ code: NEW_MEMBER_COUPON_CODE });
 
         if (!coupon) {
@@ -54,7 +68,7 @@ export const subscribeNewsletter = async (req, res) => {
             });
         }
 
-        subscription = await NewsletterSubscription.create({
+        subscription = existingSubscription || await NewsletterSubscription.create({
             email,
             couponCode: NEW_MEMBER_COUPON_CODE,
         });
@@ -88,13 +102,13 @@ export const subscribeNewsletter = async (req, res) => {
         if (error instanceof EmailDeliveryError) {
             return res.status(error.statusCode || 503).json({
                 success: false,
-                message: error.message,
+                message: NEWSLETTER_SEND_ERROR,
             });
         }
 
         return res.status(500).json({
             success: false,
-            message: 'Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.',
+            message: NEWSLETTER_SEND_ERROR,
         });
     }
 };

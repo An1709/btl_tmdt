@@ -4,7 +4,7 @@ import { productService } from "@/services/productService";
 import type { Product } from "@/types/product";
 import { useCartStore } from "@/stores/useCartStore";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { formatCurrency } from "@/utils/format";
+import { calculateDiscountPercent, formatCurrency } from "@/utils/format";
 import ProductReviews from "@/components/features/product/ProductReviews";
 import ProductCard from "@/components/features/product/ProductCard";
 import { toast } from "sonner";
@@ -265,9 +265,8 @@ const ProductDetailPage = () => {
         }
     };
 
-    const discount = product.originalPrice
-        ? Math.round((1 - product.price / product.originalPrice) * 100)
-        : 0;
+    const discount = calculateDiscountPercent(product.price, product.originalPrice);
+    const hasDiscount = discount >= 1;
     const visibleRecommendations = recommendations.filter((item) => item.id !== product.id);
     const visibleComboProducts = comboProducts.filter((item) => item.id !== product.id);
     const selectedComboProducts = visibleComboProducts.filter((item) => selectedComboIds.has(item.id));
@@ -292,7 +291,7 @@ const ProductDetailPage = () => {
 
                 {/* Info */}
                 <div className="flex flex-col gap-5">
-                    {product.badge && (
+                    {product.badge && (product.badge !== "sale" || hasDiscount) && (
                         <span className={`badge-${product.badge} self-start`}>
                             {product.badge === "new" ? "Mới" : product.badge === "hot" ? "🔥 Hot" : `−${discount}%`}
                         </span>
@@ -324,10 +323,10 @@ const ProductDetailPage = () => {
                     {/* Price */}
                     <div className="flex items-baseline gap-3">
                         <span className="text-3xl font-black text-[var(--pet-coral)]">{formatCurrency(product.price)}</span>
-                        {product.originalPrice && (
+                        {hasDiscount && product.originalPrice && (
                             <span className="text-lg text-muted-foreground line-through">{formatCurrency(product.originalPrice)}</span>
                         )}
-                        {discount > 0 && (
+                        {hasDiscount && (
                             <span className="bg-red-100 text-red-600 text-sm font-bold px-2 py-0.5 rounded-lg">−{discount}%</span>
                         )}
                     </div>

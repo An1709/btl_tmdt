@@ -25,6 +25,9 @@ const ORDER_STATUS_NOTES = {
     CancelRejected: 'Shop đã từ chối yêu cầu hủy đơn',
     Cancelled: 'Đơn hàng đã bị hủy',
 };
+const VNPAY_CONFIG_ERROR = 'Thiếu cấu hình VNPay. Vui lòng kiểm tra VNP_TMN_CODE, VNP_HASH_SECRET và VNP_RETURN_URL.';
+const VNPAY_EXPECTED_RETURN_PATH = '/api/payment/vnpay_return';
+const VNPAY_EXPECTED_IPN_PATH = '/api/payment/vnpay_ipn';
 
 const getActorRole = (user) => user?.role || 'customer';
 
@@ -192,37 +195,87 @@ function sortObject(obj) {
     return sorted;
 }
 
+function getUrlPath(url) {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return '';
+    }
+}
+
+function getVNPaySettings() {
+    const tmnCode = String(vnpayConfig.vnp_TmnCode || '').trim();
+    const hashSecret = String(vnpayConfig.vnp_HashSecret || '').trim();
+    const vnpUrl = String(vnpayConfig.vnp_Url || '').trim();
+    const returnUrl = String(vnpayConfig.vnp_ReturnUrl || '').trim();
+    const ipnUrl = String(vnpayConfig.vnp_IpnUrl || '').trim();
+
+    const returnPath = getUrlPath(returnUrl);
+    const ipnPath = ipnUrl ? getUrlPath(ipnUrl) : '';
+
+    if (!tmnCode || !hashSecret || !vnpUrl || !returnUrl || returnPath !== VNPAY_EXPECTED_RETURN_PATH || (ipnUrl && ipnPath !== VNPAY_EXPECTED_IPN_PATH)) {
+        const error = new Error(VNPAY_CONFIG_ERROR);
+        error.statusCode = 500;
+        throw error;
+    }
+
+    return { tmnCode, hashSecret, vnpUrl, returnUrl, ipnUrl };
+}
+
+function logVNPayDiagnostics({ vnpUrl, returnUrl, ipnUrl, params, paymentUrl }) {
+    if (process.env.NODE_ENV === 'production') return;
+
+    const safeUrl = new URL(paymentUrl);
+    safeUrl.searchParams.delete('vnp_SecureHash');
+
+    console.info('[VNPay:create-url]', {
+        tmnCodeExists: true,
+        vnpUrl,
+        returnUrl,
+        ipnUrl,
+        paramNames: Object.keys(params).sort(),
+        paymentUrlWithoutSecureHash: safeUrl.toString(),
+    });
+}
+
 // Helper: generate VNPay payment URL using real order ID
 function buildVNPayUrl(orderId, amount, ipAddr) {
-    process.env.TZ = 'Asia/Ho_Chi_Minh';
+    const { tmnCode, hashSecret, vnpUrl, returnUrl, ipnUrl } = getVNPaySettings();
 
-    const createDate = moment().format('YYYYMMDDHHmmss');
+    const now = moment().utcOffset('+07:00');
+    const createDate = now.format('YYYYMMDDHHmmss');
+    const expireDate = now.clone().add(15, 'minutes').format('YYYYMMDDHHmmss');
     // txnRef must be unique per transaction; use last 8 chars of Mongo ObjectId
     const txnRef = String(orderId).slice(-8).toUpperCase();
+    const rawIp = String(ipAddr || '127.0.0.1').split(',')[0].trim();
 
     let vnp_Params = {};
     vnp_Params['vnp_Version']   = '2.1.0';
     vnp_Params['vnp_Command']   = 'pay';
-    vnp_Params['vnp_TmnCode']   = vnpayConfig.vnp_TmnCode;
+    vnp_Params['vnp_TmnCode']   = tmnCode;
     vnp_Params['vnp_Locale']    = 'vn';
     vnp_Params['vnp_CurrCode']  = 'VND';
     vnp_Params['vnp_TxnRef']    = txnRef;
     vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang:' + txnRef;
     vnp_Params['vnp_OrderType'] = 'other';
-    vnp_Params['vnp_Amount']    = amount * 100;
-    vnp_Params['vnp_ReturnUrl'] = vnpayConfig.vnp_ReturnUrl;
-    vnp_Params['vnp_IpAddr']    = ipAddr;
+    vnp_Params['vnp_Amount']    = Math.round(Number(amount || 0) * 100);
+    vnp_Params['vnp_ReturnUrl'] = returnUrl;
+    vnp_Params['vnp_IpAddr']    = rawIp.replace(/^::ffff:/, '') || '127.0.0.1';
     vnp_Params['vnp_CreateDate']= createDate;
+    vnp_Params['vnp_ExpireDate']= expireDate;
 
     // Sort BEFORE hashing (VNPay requirement)
     vnp_Params = sortObject(vnp_Params);
 
     const signData = qs.stringify(vnp_Params, { encode: false });
-    const hmac     = crypto.createHmac('sha512', vnpayConfig.vnp_HashSecret);
+    const hmac     = crypto.createHmac('sha512', hashSecret);
     const signed   = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
     vnp_Params['vnp_SecureHash'] = signed;
-    return vnpayConfig.vnp_Url + '?' + qs.stringify(vnp_Params, { encode: false });
+    const paymentUrl = vnpUrl + '?' + qs.stringify(vnp_Params, { encode: false });
+    logVNPayDiagnostics({ vnpUrl, returnUrl, ipnUrl, params: vnp_Params, paymentUrl });
+
+    return paymentUrl;
 }
 
 
@@ -247,6 +300,10 @@ export const addOrderItems = async (req, res, next) => {
     }
 
     try {
+        if (paymentMethod && paymentMethod.toLowerCase() === 'vnpay') {
+            getVNPaySettings();
+        }
+
         // 1. Save the order
         const order = new Order({
             orderItems,
@@ -299,6 +356,10 @@ export const addOrderItems = async (req, res, next) => {
         return res.status(201).json(withStatusHistory(createdOrder));
 
     } catch (error) {
+        if (error?.message === VNPAY_CONFIG_ERROR) {
+            return res.status(error.statusCode || 500).json({ message: VNPAY_CONFIG_ERROR });
+        }
+
         console.error('Create order error:', error);
         next(error); // delegate to Express global error handler
     }

@@ -20,6 +20,7 @@ import postRoutes from './routes/postRoutes.js';
 import warrantyRoutes from './routes/warrantyRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import newsletterRoutes from './routes/newsletterRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 
 // Cấu hình
@@ -69,6 +70,7 @@ app.use('/api/posts', postRoutes);            // Blog & Forum
 app.use('/api/warranty', warrantyRoutes);     // Bảo hành
 app.use('/api/reviews', reviewRoutes);        // Đánh giá
 app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Default Route (Kiểm tra server sống hay chết)
 app.get('/', (req, res) => {

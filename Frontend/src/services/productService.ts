@@ -2,6 +2,7 @@ import api from "@/lib/axios";
 import type { Product, ProductBadge, ProductCategory, ProductReview } from "@/types/product";
 import type { PaginatedResponse } from "@/types/api";
 import { categoryService } from "@/services/categoryService";
+import { calculateDiscountPercent } from "@/utils/format";
 
 
 export interface ProductFilters {
@@ -74,7 +75,7 @@ export const mapProduct = (raw: any): Product => ({
     rating: raw.averageRating ?? raw.rating ?? 0,
     reviewCount: raw.reviewCount ?? 0,
     // derive badge: sale if discounted, hot if sold >200, new otherwise
-    badge: (raw.originalPrice && raw.originalPrice > raw.price
+    badge: (calculateDiscountPercent(raw.price, raw.originalPrice) >= 1
         ? "sale"
         : raw.sold > 200
             ? "hot"

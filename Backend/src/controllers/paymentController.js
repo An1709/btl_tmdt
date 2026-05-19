@@ -3,6 +3,10 @@ import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 import Order from '../models/Order.js';
 
+const VNPAY_CONFIG_ERROR = 'Thiếu cấu hình VNPay. Vui lòng kiểm tra VNP_TMN_CODE, VNP_HASH_SECRET và VNP_RETURN_URL.';
+const VNPAY_EXPECTED_RETURN_PATH = '/api/payment/vnpay_return';
+const VNPAY_EXPECTED_IPN_PATH = '/api/payment/vnpay_ipn';
+
 function appendPaymentStatusHistory(order, status, note) {
     const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
     const last = history[history.length - 1];
@@ -46,6 +50,47 @@ function buildQueryString(obj) {
     return Object.keys(obj)
         .map(key => `${key}=${obj[key]}`)
         .join('&');
+}
+
+function getUrlPath(url) {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return '';
+    }
+}
+
+function getVNPaySettings() {
+    const tmnCode = String(vnpayConfig.vnp_TmnCode || '').trim();
+    const secretKey = String(vnpayConfig.vnp_HashSecret || '').trim();
+    const vnpUrl = String(vnpayConfig.vnp_Url || '').trim();
+    const returnUrl = String(vnpayConfig.vnp_ReturnUrl || '').trim();
+    const ipnUrl = String(vnpayConfig.vnp_IpnUrl || '').trim();
+
+    const returnPath = getUrlPath(returnUrl);
+    const ipnPath = ipnUrl ? getUrlPath(ipnUrl) : '';
+
+    if (!tmnCode || !secretKey || !vnpUrl || !returnUrl || returnPath !== VNPAY_EXPECTED_RETURN_PATH || (ipnUrl && ipnPath !== VNPAY_EXPECTED_IPN_PATH)) {
+        return null;
+    }
+
+    return { tmnCode, secretKey, vnpUrl, returnUrl, ipnUrl };
+}
+
+function logVNPayDiagnostics({ vnpUrl, returnUrl, ipnUrl, params, paymentUrl }) {
+    if (process.env.NODE_ENV === 'production') return;
+
+    const safeUrl = new URL(paymentUrl);
+    safeUrl.searchParams.delete('vnp_SecureHash');
+
+    console.info('[VNPay:create-url]', {
+        tmnCodeExists: true,
+        vnpUrl,
+        returnUrl,
+        ipnUrl,
+        paramNames: Object.keys(params).sort(),
+        paymentUrlWithoutSecureHash: safeUrl.toString(),
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -115,18 +160,18 @@ async function markOrderPaidFromVNPay(order, queryParams) {
 // ---------------------------------------------------------------------------
 export const createPaymentUrl = (req, res) => {
     // ── 1. Read & trim all env values (whitespace in .env silently breaks HMAC) ──
-    const tmnCode   = (vnpayConfig.vnp_TmnCode   || '').trim();
-    const secretKey = (vnpayConfig.vnp_HashSecret || '').trim();
-    const vnpUrl    = (vnpayConfig.vnp_Url        || '').trim();
-    const returnUrl = (vnpayConfig.vnp_ReturnUrl  || '').trim();
+    const settings = getVNPaySettings();
 
-    if (!tmnCode || !secretKey) {
-        return res.status(500).json({ message: 'VNPay credentials are not configured.' });
+    if (!settings) {
+        return res.status(500).json({ message: VNPAY_CONFIG_ERROR });
     }
+
+    const { tmnCode, secretKey, vnpUrl, returnUrl, ipnUrl } = settings;
 
     // ── 2. Vietnam time via explicit UTC+7 offset (NOT process.env.TZ — unreliable) ──
     const now        = moment().utcOffset('+07:00');
     const createDate = now.format('YYYYMMDDHHmmss');   // e.g. 20260424214500
+    const expireDate = now.clone().add(15, 'minutes').format('YYYYMMDDHHmmss');
 
     // ── 3. TxnRef: unique per transaction ──
     const txnRef = req.body.orderId
@@ -161,6 +206,7 @@ export const createPaymentUrl = (req, res) => {
         vnp_ReturnUrl:  returnUrl,
         vnp_IpAddr:     ipAddr,
         vnp_CreateDate: createDate,
+        vnp_ExpireDate: expireDate,
     };
 
     if (req.body.bankCode?.trim()) {
@@ -183,10 +229,7 @@ export const createPaymentUrl = (req, res) => {
     sorted['vnp_SecureHash'] = signed;
     const paymentUrl = vnpUrl + '?' + buildQueryString(sorted);
 
-    // Debug log — remove before production
-    console.log('[VNPay] TmnCode  :', tmnCode);
-    console.log('[VNPay] signData :', signData);
-    console.log('[VNPay] signed   :', signed);
+    logVNPayDiagnostics({ vnpUrl, returnUrl, ipnUrl, params: sorted, paymentUrl });
 
     return res.status(200).json({ paymentUrl });
 };

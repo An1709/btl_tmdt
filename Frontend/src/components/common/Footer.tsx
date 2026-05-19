@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type MouseEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { newsletterService } from "@/services/newsletterService";
 
@@ -75,7 +75,7 @@ const Footer = () => {
 
         if (!email) {
             setNewsletterStatus("error");
-            setNewsletterMessage("Vui lòng nhập email để nhận mã ưu đãi.");
+            setNewsletterMessage("Vui lòng nhập email để nhận ưu đãi.");
             return "";
         }
 
@@ -102,10 +102,9 @@ const Footer = () => {
             setNewsletterMessage(response.message || "Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.");
             return true;
         } catch (error) {
-            const status = (error as { response?: { status?: number } }).response?.status;
-            setNewsletterStatus(status === 409 ? "success" : "error");
+            setNewsletterStatus("error");
             setNewsletterMessage(getNewsletterError(error));
-            return status === 409;
+            return false;
         } finally {
             setNewsletterLoading(false);
         }
@@ -114,16 +113,6 @@ const Footer = () => {
     const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         await sendNewsletterCoupon();
-    };
-
-    const handleSocialClick = async (event: MouseEvent<HTMLAnchorElement>, href: string) => {
-        event.preventDefault();
-        if (newsletterLoading) return;
-
-        const shouldOpenSocial = await sendNewsletterCoupon();
-        if (shouldOpenSocial) {
-            window.open(href, "_blank", "noopener,noreferrer");
-        }
     };
 
     return (
@@ -201,7 +190,6 @@ const Footer = () => {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     aria-label={s.label}
-                                    onClick={(event) => handleSocialClick(event, s.href)}
                                     className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center
                              hover:bg-[var(--pet-coral)] hover:-translate-y-1 transition-all duration-200"
                                 >

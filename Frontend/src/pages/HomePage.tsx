@@ -1,10 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link } from "react-router";
 import { petCategories } from "@/types/product";
 import type { Product } from "@/types/product";
 import { productService } from "@/services/productService";
+import { categoryService } from "@/services/categoryService";
+import { newsletterService } from "@/services/newsletterService";
 import ProductList from "@/components/features/product/ProductList";
 import { useAuthStore } from "@/stores/useAuthStore";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const getNewsletterError = (error: unknown) =>
+  (error as { response?: { data?: { message?: string } } }).response?.data?.message
+  || "Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.";
 
 // ── Inline skeleton row for ProductList sections ──────────────────────────
 const ProductRowSkeleton = () => (
@@ -26,15 +34,23 @@ const HomePage = () => {
   const isAdmin = user?.role === "admin" || user?.role === "staff";
   const [activeCategory, setActiveCategory] = useState("all");
   const [email, setEmail] = useState("");
+  const [newsletterMessage, setNewsletterMessage] = useState("");
+  const [newsletterStatus, setNewsletterStatus] = useState<"success" | "error" | "">("");
+  const [newsletterLoading, setNewsletterLoading] = useState(false);
 
   const [personalizedProducts, setPersonalizedProducts] = useState<Product[]>([]);
+  const [categoryProducts, setCategoryProducts] = useState<Product[]>([]);
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [accessories, setAccessories] = useState<Product[]>([]);
   const [personalizedLoading, setPersonalizedLoading] = useState(true);
   const [personalizedError, setPersonalizedError] = useState("");
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState("");
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [featuredError, setFeaturedError] = useState("");
   const [accLoading, setAccLoading] = useState(true);
+  const selectedCategory = petCategories.find((cat) => cat.id === activeCategory) ?? petCategories[0];
+  const categoryViewAllLink = activeCategory === "all" ? "/shop" : `/shop?cat=${activeCategory}`;
 
   // Fetch homepage product sections concurrently on mount
   useEffect(() => {
@@ -59,6 +75,86 @@ const HomePage = () => {
       .catch(() => { })
       .finally(() => setAccLoading(false));
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadCategoryProducts = async () => {
+      setCategoryLoading(true);
+      setCategoryError("");
+
+      try {
+        if (activeCategory !== "all") {
+          const categoryId = await categoryService.resolveId(activeCategory);
+          if (!categoryId) {
+            if (!ignore) setCategoryProducts([]);
+            return;
+          }
+        }
+
+        const response = await productService.getAll({
+          category: activeCategory === "all" ? undefined : activeCategory,
+          sort: "popular",
+          limit: 8,
+        });
+
+        if (!ignore) setCategoryProducts(response.data);
+      } catch {
+        if (!ignore) {
+          setCategoryProducts([]);
+          setCategoryError("Không thể tải sản phẩm theo loài.");
+        }
+      } finally {
+        if (!ignore) setCategoryLoading(false);
+      }
+    };
+
+    loadCategoryProducts();
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeCategory]);
+
+  const validateNewsletterEmail = () => {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setNewsletterStatus("error");
+      setNewsletterMessage("Vui lòng nhập email để nhận ưu đãi.");
+      return "";
+    }
+
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setNewsletterStatus("error");
+      setNewsletterMessage("Email không hợp lệ.");
+      return "";
+    }
+
+    return trimmedEmail;
+  };
+
+  const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedEmail = validateNewsletterEmail();
+    if (!trimmedEmail) return;
+
+    setNewsletterLoading(true);
+    setNewsletterMessage("");
+    setNewsletterStatus("");
+
+    try {
+      const response = await newsletterService.subscribe(trimmedEmail);
+      setNewsletterStatus("success");
+      setNewsletterMessage(response.message || "Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.");
+    } catch (error) {
+      setNewsletterStatus("error");
+      setNewsletterMessage(getNewsletterError(error));
+    } finally {
+      setNewsletterLoading(false);
+    }
+  };
 
   const features = [
     {
@@ -144,14 +240,6 @@ const HomePage = () => {
               >
                 🔍 Khám Phá Ngay
               </Link>
-              <Link
-                to="/shop?cat=dog" id="hero-pets-btn"
-                className="border-2 border-white/60 text-white font-bold px-8 py-3.5 rounded-2xl
-                                           hover:bg-white/20 backdrop-blur-sm hover:-translate-y-1
-                                           transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
-              >
-                🐕 Xem Thú Cưng
-              </Link>
             </div>
 
             <div className="flex flex-wrap gap-6 mt-10 animate-fade-in-up delay-400">
@@ -196,7 +284,42 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  3. PERSONALIZED RECOMMENDATIONS                               */}
+      {/*  3. CATEGORY PRODUCTS                                          */}
+      {/* ============================================================ */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {categoryLoading && (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">Đang tải sản phẩm...</p>
+            <ProductRowSkeleton />
+          </>
+        )}
+
+        {!categoryLoading && categoryError && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">{categoryError}</p>
+          </div>
+        )}
+
+        {!categoryLoading && !categoryError && categoryProducts.length === 0 && (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-5xl mb-4">🐾</div>
+            <p className="font-semibold">Chưa có sản phẩm phù hợp.</p>
+          </div>
+        )}
+
+        {!categoryLoading && !categoryError && categoryProducts.length > 0 && (
+          <ProductList
+            products={categoryProducts}
+            title={activeCategory === "all" ? "Tất cả sản phẩm" : selectedCategory.label}
+            subtitle="Sản phẩm phù hợp với loài bạn đang chọn"
+            viewAllLink={categoryViewAllLink}
+          />
+        )}
+      </section>
+
+      {/* ============================================================ */}
+      {/*  4. PERSONALIZED RECOMMENDATIONS                               */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {personalizedLoading && (
@@ -231,7 +354,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  4. FEATURED PRODUCTS                                          */}
+      {/*  5. FEATURED PRODUCTS                                          */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {featuredLoading && (
@@ -266,7 +389,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  5. WHY PETMART FEATURES                                      */}
+      {/*  6. WHY PETMART FEATURES                                      */}
       {/* ============================================================ */}
       <section className="bg-muted/40 dark:bg-muted/20 py-16 mt-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -291,7 +414,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  6. ACCESSORIES SECTION                                       */}
+      {/*  7. ACCESSORIES SECTION                                       */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {accLoading ? (
@@ -307,7 +430,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  7. BANNER PROMO STRIP                                        */}
+      {/*  8. BANNER PROMO STRIP                                        */}
       {/* ============================================================ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div className="rounded-3xl overflow-hidden relative bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] p-8 md:p-12 flex flex-col md:flex-row items-center gap-6">
@@ -332,7 +455,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  8. NEWSLETTER CTA                                            */}
+      {/*  9. NEWSLETTER CTA                                            */}
       {/* ============================================================ */}
       <section className="bg-foreground dark:bg-card py-16">
         <div className="max-w-2xl mx-auto px-4 text-center">
@@ -343,23 +466,40 @@ const HomePage = () => {
           <p className="text-white/60 text-sm mb-6">
             Đăng ký nhận thông báo về các chương trình khuyến mãi và mẹo chăm sóc thú cưng.
           </p>
-          <form className="flex gap-3 max-w-md mx-auto" onSubmit={(e) => { e.preventDefault(); setEmail(""); }}>
+          <form className="flex gap-3 max-w-md mx-auto" onSubmit={handleNewsletterSubmit}>
             <input
               type="email" id="newsletter-email" value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (newsletterMessage) {
+                  setNewsletterMessage("");
+                  setNewsletterStatus("");
+                }
+              }}
               placeholder="Nhập email của bạn..."
+              disabled={newsletterLoading}
               className="flex-1 px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder:text-white/40
                                        focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/50 focus:border-[var(--pet-coral)]
                                        text-sm transition-all"
             />
-            <button type="submit" id="newsletter-submit" className="btn-pet-primary px-6 shrink-0">Đăng Ký</button>
+            <button type="submit" id="newsletter-submit" disabled={newsletterLoading} className="btn-pet-primary px-6 shrink-0">
+              {newsletterLoading ? "Đang gửi..." : "Đăng Ký"}
+            </button>
           </form>
+          {newsletterMessage && (
+            <p
+              className={`text-xs mt-4 ${newsletterStatus === "success" ? "text-emerald-300" : "text-red-300"}`}
+              role="status"
+            >
+              {newsletterMessage}
+            </p>
+          )}
           <p className="text-xs text-white/30 mt-4">Không spam. Hủy đăng ký bất cứ lúc nào.</p>
         </div>
       </section>
 
       {/* ============================================================ */}
-      {/*  9. ADMIN QUICK-ACCESS                                        */}
+      {/*  10. ADMIN QUICK-ACCESS                                       */}
       {/* ============================================================ */}
       {isAdmin && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

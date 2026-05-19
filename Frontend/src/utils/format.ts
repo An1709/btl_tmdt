@@ -38,3 +38,20 @@ export const formatRelativeTime = (dateStr: string): string => {
 
 export const truncate = (text: string, maxLength: number): string =>
     text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+
+export const calculateDiscountPercent = (price?: number, originalPrice?: number): number => {
+    const currentPrice = Number(price);
+    const comparePrice = Number(originalPrice);
+
+    if (
+        !Number.isFinite(currentPrice)
+        || !Number.isFinite(comparePrice)
+        || comparePrice <= 0
+        || currentPrice < 0
+        || comparePrice <= currentPrice
+    ) {
+        return 0;
+    }
+
+    return Math.max(0, Math.round(((comparePrice - currentPrice) / comparePrice) * 100));
+};

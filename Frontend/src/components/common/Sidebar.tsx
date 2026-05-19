@@ -15,6 +15,7 @@ const adminLinks = [
     { to: "/admin/coupons", label: "Mã giảm giá", emoji: "🎟️" },
     { to: "/admin/reviews", label: "Đánh giá", emoji: "⭐" },
     { to: "/admin/warranty", label: "Bảo hành", emoji: "🛡️" },
+    { to: "/admin/ai-model", label: "Huấn luyện mô hình", emoji: "🧠" },
 ];
 
 const userLinks = [

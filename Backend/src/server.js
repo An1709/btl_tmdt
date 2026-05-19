@@ -21,6 +21,8 @@ import warrantyRoutes from './routes/warrantyRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import newsletterRoutes from './routes/newsletterRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import petVisionRoutes from './routes/petVisionRoutes.js';
+import adminPetVisionRoutes from './routes/adminPetVisionRoutes.js';
 
 
 // Cấu hình
@@ -71,6 +73,8 @@ app.use('/api/warranty', warrantyRoutes);     // Bảo hành
 app.use('/api/reviews', reviewRoutes);        // Đánh giá
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/pet-vision', petVisionRoutes);
+app.use('/api/admin/pet-vision', adminPetVisionRoutes);
 
 // Default Route (Kiểm tra server sống hay chết)
 app.get('/', (req, res) => {

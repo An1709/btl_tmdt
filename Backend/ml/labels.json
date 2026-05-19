@@ -1,0 +1,490 @@
+{
+  "inputSize": [
+    224,
+    224
+  ],
+  "classes": [
+    {
+      "index": 0,
+      "label": "cho American_bulldog",
+      "displayName": "Chó American Bulldog",
+      "species": "Chó",
+      "breed": "American Bulldog"
+    },
+    {
+      "index": 1,
+      "label": "cho American_pit_bull_terrier",
+      "displayName": "Chó American Pit Bull Terrier",
+      "species": "Chó",
+      "breed": "American Pit Bull Terrier"
+    },
+    {
+      "index": 2,
+      "label": "cho Basset_hound",
+      "displayName": "Chó Basset Hound",
+      "species": "Chó",
+      "breed": "Basset Hound"
+    },
+    {
+      "index": 3,
+      "label": "cho Beagle",
+      "displayName": "Chó Beagle",
+      "species": "Chó",
+      "breed": "Beagle"
+    },
+    {
+      "index": 4,
+      "label": "cho Boxer",
+      "displayName": "Chó Boxer",
+      "species": "Chó",
+      "breed": "Boxer"
+    },
+    {
+      "index": 5,
+      "label": "cho Chihuahua",
+      "displayName": "Chó Chihuahua",
+      "species": "Chó",
+      "breed": "Chihuahua"
+    },
+    {
+      "index": 6,
+      "label": "cho English_cocker_spaniel",
+      "displayName": "Chó English Cocker Spaniel",
+      "species": "Chó",
+      "breed": "English Cocker Spaniel"
+    },
+    {
+      "index": 7,
+      "label": "cho English_setter",
+      "displayName": "Chó English Setter",
+      "species": "Chó",
+      "breed": "English Setter"
+    },
+    {
+      "index": 8,
+      "label": "cho German_shorthaired",
+      "displayName": "Chó German Shorthaired",
+      "species": "Chó",
+      "breed": "German Shorthaired"
+    },
+    {
+      "index": 9,
+      "label": "cho Great_pyrenees",
+      "displayName": "Chó Great Pyrenees",
+      "species": "Chó",
+      "breed": "Great Pyrenees"
+    },
+    {
+      "index": 10,
+      "label": "cho Havanese",
+      "displayName": "Chó Havanese",
+      "species": "Chó",
+      "breed": "Havanese"
+    },
+    {
+      "index": 11,
+      "label": "cho Japanese_chin",
+      "displayName": "Chó Japanese Chin",
+      "species": "Chó",
+      "breed": "Japanese Chin"
+    },
+    {
+      "index": 12,
+      "label": "cho Keeshond",
+      "displayName": "Chó Keeshond",
+      "species": "Chó",
+      "breed": "Keeshond"
+    },
+    {
+      "index": 13,
+      "label": "cho Leonberger",
+      "displayName": "Chó Leonberger",
+      "species": "Chó",
+      "breed": "Leonberger"
+    },
+    {
+      "index": 14,
+      "label": "cho Miniature_pinscher",
+      "displayName": "Chó Miniature Pinscher",
+      "species": "Chó",
+      "breed": "Miniature Pinscher"
+    },
+    {
+      "index": 15,
+      "label": "cho Newfoundland",
+      "displayName": "Chó Newfoundland",
+      "species": "Chó",
+      "breed": "Newfoundland"
+    },
+    {
+      "index": 16,
+      "label": "cho Pomeranian",
+      "displayName": "Chó Pomeranian",
+      "species": "Chó",
+      "breed": "Pomeranian"
+    },
+    {
+      "index": 17,
+      "label": "cho Pug",
+      "displayName": "Chó Pug",
+      "species": "Chó",
+      "breed": "Pug"
+    },
+    {
+      "index": 18,
+      "label": "cho Saint_bernard",
+      "displayName": "Chó Saint Bernard",
+      "species": "Chó",
+      "breed": "Saint Bernard"
+    },
+    {
+      "index": 19,
+      "label": "cho Samoyed",
+      "displayName": "Chó Samoyed",
+      "species": "Chó",
+      "breed": "Samoyed"
+    },
+    {
+      "index": 20,
+      "label": "cho Scottish_terrier",
+      "displayName": "Chó Scottish Terrier",
+      "species": "Chó",
+      "breed": "Scottish Terrier"
+    },
+    {
+      "index": 21,
+      "label": "cho Shiba_inu",
+      "displayName": "Chó Shiba Inu",
+      "species": "Chó",
+      "breed": "Shiba Inu"
+    },
+    {
+      "index": 22,
+      "label": "cho Staffordshire_bull_terrier",
+      "displayName": "Chó Staffordshire Bull Terrier",
+      "species": "Chó",
+      "breed": "Staffordshire Bull Terrier"
+    },
+    {
+      "index": 23,
+      "label": "cho Wheaten_terrier",
+      "displayName": "Chó Wheaten Terrier",
+      "species": "Chó",
+      "breed": "Wheaten Terrier"
+    },
+    {
+      "index": 24,
+      "label": "cho Yorkshire_terrier",
+      "displayName": "Chó Yorkshire Terrier",
+      "species": "Chó",
+      "breed": "Yorkshire Terrier"
+    },
+    {
+      "index": 25,
+      "label": "meo Abyssinian",
+      "displayName": "Mèo Abyssinian",
+      "species": "Mèo",
+      "breed": "Abyssinian"
+    },
+    {
+      "index": 26,
+      "label": "meo Bengal",
+      "displayName": "Mèo Bengal",
+      "species": "Mèo",
+      "breed": "Bengal"
+    },
+    {
+      "index": 27,
+      "label": "meo Birman",
+      "displayName": "Mèo Birman",
+      "species": "Mèo",
+      "breed": "Birman"
+    },
+    {
+      "index": 28,
+      "label": "meo Bombay",
+      "displayName": "Mèo Bombay",
+      "species": "Mèo",
+      "breed": "Bombay"
+    },
+    {
+      "index": 29,
+      "label": "meo British_Shorthair",
+      "displayName": "Mèo British Shorthair",
+      "species": "Mèo",
+      "breed": "British Shorthair"
+    },
+    {
+      "index": 30,
+      "label": "meo Egyptian_Mau",
+      "displayName": "Mèo Egyptian Mau",
+      "species": "Mèo",
+      "breed": "Egyptian Mau"
+    },
+    {
+      "index": 31,
+      "label": "meo Maine_Coon",
+      "displayName": "Mèo Maine Coon",
+      "species": "Mèo",
+      "breed": "Maine Coon"
+    },
+    {
+      "index": 32,
+      "label": "meo Persian",
+      "displayName": "Mèo Persian",
+      "species": "Mèo",
+      "breed": "Persian"
+    },
+    {
+      "index": 33,
+      "label": "meo Ragdoll",
+      "displayName": "Mèo Ragdoll",
+      "species": "Mèo",
+      "breed": "Ragdoll"
+    },
+    {
+      "index": 34,
+      "label": "meo Russian_Blue",
+      "displayName": "Mèo Russian Blue",
+      "species": "Mèo",
+      "breed": "Russian Blue"
+    },
+    {
+      "index": 35,
+      "label": "meo Siamese",
+      "displayName": "Mèo Siamese",
+      "species": "Mèo",
+      "breed": "Siamese"
+    },
+    {
+      "index": 36,
+      "label": "meo Sphynx",
+      "displayName": "Mèo Sphynx",
+      "species": "Mèo",
+      "breed": "Sphynx"
+    }
+  ],
+  "updatedAt": "2026-05-19T09:07:37.876427+00:00",
+  "0": {
+    "label": "cho American_bulldog",
+    "displayName": "Chó American Bulldog",
+    "species": "Chó",
+    "breed": "American Bulldog"
+  },
+  "1": {
+    "label": "cho American_pit_bull_terrier",
+    "displayName": "Chó American Pit Bull Terrier",
+    "species": "Chó",
+    "breed": "American Pit Bull Terrier"
+  },
+  "2": {
+    "label": "cho Basset_hound",
+    "displayName": "Chó Basset Hound",
+    "species": "Chó",
+    "breed": "Basset Hound"
+  },
+  "3": {
+    "label": "cho Beagle",
+    "displayName": "Chó Beagle",
+    "species": "Chó",
+    "breed": "Beagle"
+  },
+  "4": {
+    "label": "cho Boxer",
+    "displayName": "Chó Boxer",
+    "species": "Chó",
+    "breed": "Boxer"
+  },
+  "5": {
+    "label": "cho Chihuahua",
+    "displayName": "Chó Chihuahua",
+    "species": "Chó",
+    "breed": "Chihuahua"
+  },
+  "6": {
+    "label": "cho English_cocker_spaniel",
+    "displayName": "Chó English Cocker Spaniel",
+    "species": "Chó",
+    "breed": "English Cocker Spaniel"
+  },
+  "7": {
+    "label": "cho English_setter",
+    "displayName": "Chó English Setter",
+    "species": "Chó",
+    "breed": "English Setter"
+  },
+  "8": {
+    "label": "cho German_shorthaired",
+    "displayName": "Chó German Shorthaired",
+    "species": "Chó",
+    "breed": "German Shorthaired"
+  },
+  "9": {
+    "label": "cho Great_pyrenees",
+    "displayName": "Chó Great Pyrenees",
+    "species": "Chó",
+    "breed": "Great Pyrenees"
+  },
+  "10": {
+    "label": "cho Havanese",
+    "displayName": "Chó Havanese",
+    "species": "Chó",
+    "breed": "Havanese"
+  },
+  "11": {
+    "label": "cho Japanese_chin",
+    "displayName": "Chó Japanese Chin",
+    "species": "Chó",
+    "breed": "Japanese Chin"
+  },
+  "12": {
+    "label": "cho Keeshond",
+    "displayName": "Chó Keeshond",
+    "species": "Chó",
+    "breed": "Keeshond"
+  },
+  "13": {
+    "label": "cho Leonberger",
+    "displayName": "Chó Leonberger",
+    "species": "Chó",
+    "breed": "Leonberger"
+  },
+  "14": {
+    "label": "cho Miniature_pinscher",
+    "displayName": "Chó Miniature Pinscher",
+    "species": "Chó",
+    "breed": "Miniature Pinscher"
+  },
+  "15": {
+    "label": "cho Newfoundland",
+    "displayName": "Chó Newfoundland",
+    "species": "Chó",
+    "breed": "Newfoundland"
+  },
+  "16": {
+    "label": "cho Pomeranian",
+    "displayName": "Chó Pomeranian",
+    "species": "Chó",
+    "breed": "Pomeranian"
+  },
+  "17": {
+    "label": "cho Pug",
+    "displayName": "Chó Pug",
+    "species": "Chó",
+    "breed": "Pug"
+  },
+  "18": {
+    "label": "cho Saint_bernard",
+    "displayName": "Chó Saint Bernard",
+    "species": "Chó",
+    "breed": "Saint Bernard"
+  },
+  "19": {
+    "label": "cho Samoyed",
+    "displayName": "Chó Samoyed",
+    "species": "Chó",
+    "breed": "Samoyed"
+  },
+  "20": {
+    "label": "cho Scottish_terrier",
+    "displayName": "Chó Scottish Terrier",
+    "species": "Chó",
+    "breed": "Scottish Terrier"
+  },
+  "21": {
+    "label": "cho Shiba_inu",
+    "displayName": "Chó Shiba Inu",
+    "species": "Chó",
+    "breed": "Shiba Inu"
+  },
+  "22": {
+    "label": "cho Staffordshire_bull_terrier",
+    "displayName": "Chó Staffordshire Bull Terrier",
+    "species": "Chó",
+    "breed": "Staffordshire Bull Terrier"
+  },
+  "23": {
+    "label": "cho Wheaten_terrier",
+    "displayName": "Chó Wheaten Terrier",
+    "species": "Chó",
+    "breed": "Wheaten Terrier"
+  },
+  "24": {
+    "label": "cho Yorkshire_terrier",
+    "displayName": "Chó Yorkshire Terrier",
+    "species": "Chó",
+    "breed": "Yorkshire Terrier"
+  },
+  "25": {
+    "label": "meo Abyssinian",
+    "displayName": "Mèo Abyssinian",
+    "species": "Mèo",
+    "breed": "Abyssinian"
+  },
+  "26": {
+    "label": "meo Bengal",
+    "displayName": "Mèo Bengal",
+    "species": "Mèo",
+    "breed": "Bengal"
+  },
+  "27": {
+    "label": "meo Birman",
+    "displayName": "Mèo Birman",
+    "species": "Mèo",
+    "breed": "Birman"
+  },
+  "28": {
+    "label": "meo Bombay",
+    "displayName": "Mèo Bombay",
+    "species": "Mèo",
+    "breed": "Bombay"
+  },
+  "29": {
+    "label": "meo British_Shorthair",
+    "displayName": "Mèo British Shorthair",
+    "species": "Mèo",
+    "breed": "British Shorthair"
+  },
+  "30": {
+    "label": "meo Egyptian_Mau",
+    "displayName": "Mèo Egyptian Mau",
+    "species": "Mèo",
+    "breed": "Egyptian Mau"
+  },
+  "31": {
+    "label": "meo Maine_Coon",
+    "displayName": "Mèo Maine Coon",
+    "species": "Mèo",
+    "breed": "Maine Coon"
+  },
+  "32": {
+    "label": "meo Persian",
+    "displayName": "Mèo Persian",
+    "species": "Mèo",
+    "breed": "Persian"
+  },
+  "33": {
+    "label": "meo Ragdoll",
+    "displayName": "Mèo Ragdoll",
+    "species": "Mèo",
+    "breed": "Ragdoll"
+  },
+  "34": {
+    "label": "meo Russian_Blue",
+    "displayName": "Mèo Russian Blue",
+    "species": "Mèo",
+    "breed": "Russian Blue"
+  },
+  "35": {
+    "label": "meo Siamese",
+    "displayName": "Mèo Siamese",
+    "species": "Mèo",
+    "breed": "Siamese"
+  },
+  "36": {
+    "label": "meo Sphynx",
+    "displayName": "Mèo Sphynx",
+    "species": "Mèo",
+    "breed": "Sphynx"
+  }
+}

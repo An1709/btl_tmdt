@@ -29,6 +29,7 @@ const WarrantyRequestPage = lazy(() => import("@/pages/user/WarrantyRequestPage"
 const AboutPage = lazy(() => import("@/pages/AboutPage"));
 const BlogListPage = lazy(() => import("@/pages/blog/BlogListPage"));
 const BlogDetailPage = lazy(() => import("@/pages/blog/BlogDetailPage"));
+const PetVisionPage = lazy(() => import("@/pages/PetVisionPage"));
 const DashboardPage = lazy(() => import("@/pages/admin/DashboardPage"));
 const OrderManagePage = lazy(() => import("@/pages/admin/OrderManagePage"));
 const UserManagePage = lazy(() => import("@/pages/admin/UserManagePage"));
@@ -37,6 +38,7 @@ const BlogManagePage = lazy(() => import("@/pages/admin/BlogManagePage"));
 const CouponManagePage = lazy(() => import("@/pages/admin/CouponManagePage"));
 const ReviewManagePage = lazy(() => import("@/pages/admin/ReviewManagePage"));
 const WarrantyManagePage = lazy(() => import("@/pages/admin/WarrantyManagePage"));
+const PetVisionTrainPage = lazy(() => import("@/pages/admin/PetVisionTrainPage"));
 
 const SuspenseWrap = ({ children }: { children: React.ReactNode }) => (
     <Suspense fallback={<Loading fullPage />}>{children}</Suspense>
@@ -52,6 +54,7 @@ const AppRoutes = () => (
             <Route path="about" element={<SuspenseWrap><AboutPage /></SuspenseWrap>} />
             <Route path="blog" element={<SuspenseWrap><BlogListPage /></SuspenseWrap>} />
             <Route path="blog/:slug" element={<SuspenseWrap><BlogDetailPage /></SuspenseWrap>} />
+            <Route path="pet-vision" element={<SuspenseWrap><PetVisionPage /></SuspenseWrap>} />
 
             {/* ── Cart page (accessible without login, guarded in checkout) ── */}
             <Route path="cart" element={<SuspenseWrap><CartPage /></SuspenseWrap>} />
@@ -89,6 +92,7 @@ const AppRoutes = () => (
                 <Route path="admin/coupons" element={<SuspenseWrap><CouponManagePage /></SuspenseWrap>} />
                 <Route path="admin/reviews" element={<SuspenseWrap><ReviewManagePage /></SuspenseWrap>} />
                 <Route path="admin/warranty" element={<SuspenseWrap><WarrantyManagePage /></SuspenseWrap>} />
+                <Route path="admin/ai-model" element={<SuspenseWrap><PetVisionTrainPage /></SuspenseWrap>} />
             </Route>
         </Route>
 

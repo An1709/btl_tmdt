@@ -1,0 +1,9 @@
+# Pet Vision local ML artifacts
+.venv/
+Backend/ml/dataset/
+Backend/ml/models/*.keras
+Backend/ml/models/*.h5
+Backend/ml/models/*.onnx
+!Backend/ml/models/.gitkeep
+Backend/ml/outputs/*
+!Backend/ml/outputs/.gitkeep

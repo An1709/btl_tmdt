@@ -3,6 +3,7 @@ import { ImagePlus, MessageCircle, Minus, Send, X } from "lucide-react";
 import { useLocation } from "react-router";
 import { aiService, type ChatMessage } from "@/services/aiService";
 import { petVisionService, type PetVisionResponse, type PetVisionSuggestedProduct } from "@/services/petVisionService";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 interface ChatUiMessage extends ChatMessage {
     imageUrl?: string;
@@ -13,6 +14,8 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const IMAGE_TYPE_ERROR = "Vui lòng dán hoặc chọn tệp ảnh hợp lệ.";
 const IMAGE_SIZE_ERROR = "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 5MB.";
 const DEFAULT_IMAGE_MESSAGE = "Nhờ PetMart nhận diện giống thú cưng trong ảnh này";
+const CHAT_STORAGE_PREFIX = "petmart_chat_history";
+const GUEST_CHAT_STORAGE_KEY = `${CHAT_STORAGE_PREFIX}_guest`;
 
 const greetingMessage: ChatUiMessage = {
     role: "assistant",
@@ -21,6 +24,52 @@ const greetingMessage: ChatUiMessage = {
 };
 
 const hiddenPathPrefixes = ["/admin", "/signin", "/signup", "/verify-email", "/forgot-password"];
+
+const getScopedChatStorageKey = (user: ReturnType<typeof useAuthStore.getState>["user"]) => {
+    if (!user) return GUEST_CHAT_STORAGE_KEY;
+    const identity = user._id || user.email || user.username;
+    return `${CHAT_STORAGE_PREFIX}_${encodeURIComponent(identity)}`;
+};
+
+const getFreshGreeting = (): ChatUiMessage => ({
+    ...greetingMessage,
+    timestamp: new Date().toISOString(),
+});
+
+const loadChatHistory = (storageKey: string): ChatUiMessage[] => {
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return [getFreshGreeting()];
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [getFreshGreeting()];
+
+        const messages = parsed
+            .filter((message): message is ChatMessage =>
+                (message?.role === "user" || message?.role === "assistant")
+                && typeof message.content === "string"
+                && typeof message.timestamp === "string",
+            )
+            .map((message) => ({
+                role: message.role,
+                content: message.content,
+                timestamp: message.timestamp,
+            }));
+
+        return messages.length > 0 ? messages : [getFreshGreeting()];
+    } catch {
+        return [getFreshGreeting()];
+    }
+};
+
+const saveChatHistory = (storageKey: string, messages: ChatUiMessage[]) => {
+    try {
+        const safeMessages = messages.map(({ role, content, timestamp }) => ({ role, content, timestamp }));
+        localStorage.setItem(storageKey, JSON.stringify(safeMessages));
+    } catch {
+        // Storage quota/privacy mode failures should not break the chatbot UI.
+    }
+};
 
 const getErrorMessage = (error: unknown) =>
     (error as { response?: { data?: { message?: string } } }).response?.data?.message
@@ -84,8 +133,12 @@ const buildVisionReply = (result: PetVisionResponse) => {
 
 const ChatWidget = () => {
     const location = useLocation();
+    const user = useAuthStore((state) => state.user);
+    const authLoading = useAuthStore((state) => state.loading);
+    const authInitialized = useAuthStore((state) => state.initialized);
     const [open, setOpen] = useState(false);
-    const [messages, setMessages] = useState<ChatUiMessage[]>([greetingMessage]);
+    const [messages, setMessages] = useState<ChatUiMessage[]>([getFreshGreeting()]);
+    const [activeChatStorageKey, setActiveChatStorageKey] = useState("");
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [loadingLabel, setLoadingLabel] = useState("Đang trả lời");
@@ -96,8 +149,13 @@ const ChatWidget = () => {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const sentImageUrlsRef = useRef<string[]>([]);
+    const requestGuardRef = useRef(0);
 
     const hidden = hiddenPathPrefixes.some((path) => location.pathname.startsWith(path));
+    const chatStorageKey = authInitialized && !authLoading ? getScopedChatStorageKey(user) : "";
+    const visibleMessages = chatStorageKey && activeChatStorageKey === chatStorageKey
+        ? messages
+        : [getFreshGreeting()];
 
     useEffect(() => {
         if (open) {
@@ -118,6 +176,34 @@ const ChatWidget = () => {
     useEffect(() => () => {
         sentImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     }, []);
+
+    useEffect(() => {
+        requestGuardRef.current += 1;
+        setLoading(false);
+        setInput("");
+        setSelectedImageFile(null);
+        setSelectedImagePreviewUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return "";
+        });
+        sentImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        sentImageUrlsRef.current = [];
+        if (fileInputRef.current) fileInputRef.current.value = "";
+
+        if (!chatStorageKey) {
+            setActiveChatStorageKey("");
+            setMessages([getFreshGreeting()]);
+            return;
+        }
+
+        setMessages(loadChatHistory(chatStorageKey));
+        setActiveChatStorageKey(chatStorageKey);
+    }, [chatStorageKey]);
+
+    useEffect(() => {
+        if (!chatStorageKey || activeChatStorageKey !== chatStorageKey) return;
+        saveChatHistory(chatStorageKey, messages);
+    }, [activeChatStorageKey, chatStorageKey, messages]);
 
     if (hidden) return null;
 
@@ -172,7 +258,9 @@ const ChatWidget = () => {
 
     const sendTextMessage = async () => {
         const text = input.trim();
-        if (!text || loading) return;
+        if (!text || loading || !chatStorageKey) return;
+        const requestId = ++requestGuardRef.current;
+        const requestStorageKey = chatStorageKey;
 
         const userMessage: ChatUiMessage = {
             role: "user",
@@ -187,16 +275,22 @@ const ChatWidget = () => {
 
         try {
             const reply = await aiService.sendMessage(text);
-            addAssistantMessage(reply);
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                addAssistantMessage(reply);
+            }
         } catch (error) {
-            addAssistantMessage(getErrorMessage(error));
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                addAssistantMessage(getErrorMessage(error));
+            }
         } finally {
-            setLoading(false);
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                setLoading(false);
+            }
         }
     };
 
     const sendImageFile = async (file: File, fallbackCaption: string) => {
-        if (loading) return;
+        if (loading || !chatStorageKey) return;
 
         const validationError = validateImageFile(file);
         if (validationError) {
@@ -204,6 +298,8 @@ const ChatWidget = () => {
             return;
         }
 
+        const requestId = ++requestGuardRef.current;
+        const requestStorageKey = chatStorageKey;
         const imageUrl = URL.createObjectURL(file);
         sentImageUrlsRef.current.push(imageUrl);
         const userMessage: ChatUiMessage = {
@@ -224,14 +320,20 @@ const ChatWidget = () => {
 
         try {
             const result = await petVisionService.predict(file);
-            addAssistantMessage(buildVisionReply(result));
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                addAssistantMessage(buildVisionReply(result));
+            }
         } catch (error) {
-            addAssistantMessage(
-                (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                || "Không thể nhận diện ảnh. Vui lòng thử lại.",
-            );
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                addAssistantMessage(
+                    (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                    || "Không thể nhận diện ảnh. Vui lòng thử lại.",
+                );
+            }
         } finally {
-            setLoading(false);
+            if (requestGuardRef.current === requestId && chatStorageKey === requestStorageKey) {
+                setLoading(false);
+            }
         }
     };
 
@@ -311,7 +413,7 @@ const ChatWidget = () => {
                     </header>
 
                     <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-muted/20 dark:bg-background/20">
-                        {messages.map((message, index) => (
+                        {visibleMessages.map((message, index) => (
                             <div
                                 key={`${message.timestamp}-${index}`}
                                 className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -414,7 +516,7 @@ const ChatWidget = () => {
                             />
                             <button
                                 type="submit"
-                                disabled={(!input.trim() && !selectedImageFile) || loading}
+                                disabled={(!input.trim() && !selectedImageFile) || loading || !chatStorageKey}
                                 className="w-10 h-10 shrink-0 rounded-xl bg-[var(--pet-coral)] text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                                 aria-label="Gửi"
                             >

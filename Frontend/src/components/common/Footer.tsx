@@ -6,7 +6,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const getNewsletterError = (error: unknown) =>
     (error as { response?: { data?: { message?: string } } }).response?.data?.message
-    || "Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.";
+    || "Không thể gửi ưu đãi. Vui lòng thử lại sau.";
 
 const Footer = () => {
     const year = new Date().getFullYear();
@@ -99,7 +99,7 @@ const Footer = () => {
         try {
             const response = await newsletterService.subscribe(email);
             setNewsletterStatus("success");
-            setNewsletterMessage(response.message || "Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.");
+            setNewsletterMessage(response.message || "Ưu đãi dành cho người mới đã được gửi đến email của bạn.");
             return true;
         } catch (error) {
             setNewsletterStatus("error");
@@ -199,7 +199,7 @@ const Footer = () => {
                         </div>
                         {/* Newsletter mini */}
                         <div className="mt-2">
-                            <p className="text-sm text-white/60 mb-2">Nhận ưu đãi mới nhất:</p>
+                            <p className="text-sm text-white/60 mb-2">Nhận ưu đãi dành cho người mới</p>
                             <form className="flex gap-2" onSubmit={handleNewsletterSubmit}>
                                 <input
                                     type="email"

@@ -4,7 +4,9 @@ import sendEmail, { EmailDeliveryError } from '../utils/sendEmail.js';
 
 const NEW_MEMBER_COUPON_CODE = 'NEWMEMBER';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const NEWSLETTER_SEND_ERROR = 'Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.';
+const NEWSLETTER_SEND_ERROR = 'Không thể gửi ưu đãi. Vui lòng thử lại sau.';
+const NEWSLETTER_SUCCESS_MESSAGE = 'Ưu đãi dành cho người mới đã được gửi đến email của bạn.';
+const NEWSLETTER_DUPLICATE_MESSAGE = 'Email này đã nhận ưu đãi dành cho người mới.';
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
@@ -47,8 +49,8 @@ export const subscribeNewsletter = async (req, res) => {
         if (existingSubscription?.sentAt) {
             return res.status(409).json({
                 success: false,
-                code: 'NEWSLETTER_COUPON_ALREADY_SENT',
-                message: 'Email này đã nhận mã ưu đãi NEWMEMBER.',
+                code: 'ALREADY_SUBSCRIBED',
+                message: NEWSLETTER_DUPLICATE_MESSAGE,
             });
         }
 
@@ -57,14 +59,14 @@ export const subscribeNewsletter = async (req, res) => {
         if (!coupon) {
             return res.status(404).json({
                 success: false,
-                message: 'Mã giảm giá NEWMEMBER chưa được cấu hình.',
+                message: NEWSLETTER_SEND_ERROR,
             });
         }
 
         if (new Date() > coupon.expirationDate) {
             return res.status(400).json({
                 success: false,
-                message: 'Mã giảm giá NEWMEMBER đã hết hạn.',
+                message: NEWSLETTER_SEND_ERROR,
             });
         }
 
@@ -84,14 +86,14 @@ export const subscribeNewsletter = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: 'Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.',
+            message: NEWSLETTER_SUCCESS_MESSAGE,
         });
     } catch (error) {
         if (error?.code === 11000) {
             return res.status(409).json({
                 success: false,
-                code: 'NEWSLETTER_COUPON_ALREADY_SENT',
-                message: 'Email này đã nhận mã ưu đãi NEWMEMBER.',
+                code: 'ALREADY_SUBSCRIBED',
+                message: NEWSLETTER_DUPLICATE_MESSAGE,
             });
         }
 

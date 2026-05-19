@@ -239,7 +239,7 @@ const CouponManagePage = () => {
                                     value={form.code}
                                     onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))}
                                     className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    placeholder="NEWMEMBER"
+                                    placeholder="WELCOME10"
                                     disabled={saving}
                                 />
                             </label>

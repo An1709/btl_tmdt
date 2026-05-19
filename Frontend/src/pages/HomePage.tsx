@@ -1,18 +1,11 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { petCategories } from "@/types/product";
 import type { Product } from "@/types/product";
 import { productService } from "@/services/productService";
 import { categoryService } from "@/services/categoryService";
-import { newsletterService } from "@/services/newsletterService";
 import ProductList from "@/components/features/product/ProductList";
 import { useAuthStore } from "@/stores/useAuthStore";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const getNewsletterError = (error: unknown) =>
-  (error as { response?: { data?: { message?: string } } }).response?.data?.message
-  || "Không thể gửi mã ưu đãi lúc này. Vui lòng thử lại sau.";
 
 // ── Inline skeleton row for ProductList sections ──────────────────────────
 const ProductRowSkeleton = () => (
@@ -33,10 +26,6 @@ const HomePage = () => {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "admin" || user?.role === "staff";
   const [activeCategory, setActiveCategory] = useState("all");
-  const [email, setEmail] = useState("");
-  const [newsletterMessage, setNewsletterMessage] = useState("");
-  const [newsletterStatus, setNewsletterStatus] = useState<"success" | "error" | "">("");
-  const [newsletterLoading, setNewsletterLoading] = useState(false);
 
   const [personalizedProducts, setPersonalizedProducts] = useState<Product[]>([]);
   const [categoryProducts, setCategoryProducts] = useState<Product[]>([]);
@@ -115,46 +104,6 @@ const HomePage = () => {
       ignore = true;
     };
   }, [activeCategory]);
-
-  const validateNewsletterEmail = () => {
-    const trimmedEmail = email.trim();
-
-    if (!trimmedEmail) {
-      setNewsletterStatus("error");
-      setNewsletterMessage("Vui lòng nhập email để nhận ưu đãi.");
-      return "";
-    }
-
-    if (!EMAIL_PATTERN.test(trimmedEmail)) {
-      setNewsletterStatus("error");
-      setNewsletterMessage("Email không hợp lệ.");
-      return "";
-    }
-
-    return trimmedEmail;
-  };
-
-  const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const trimmedEmail = validateNewsletterEmail();
-    if (!trimmedEmail) return;
-
-    setNewsletterLoading(true);
-    setNewsletterMessage("");
-    setNewsletterStatus("");
-
-    try {
-      const response = await newsletterService.subscribe(trimmedEmail);
-      setNewsletterStatus("success");
-      setNewsletterMessage(response.message || "Mã giảm giá NEWMEMBER đã được gửi đến email của bạn.");
-    } catch (error) {
-      setNewsletterStatus("error");
-      setNewsletterMessage(getNewsletterError(error));
-    } finally {
-      setNewsletterLoading(false);
-    }
-  };
 
   const features = [
     {
@@ -455,51 +404,7 @@ const HomePage = () => {
       </section>
 
       {/* ============================================================ */}
-      {/*  9. NEWSLETTER CTA                                            */}
-      {/* ============================================================ */}
-      <section className="bg-foreground dark:bg-card py-16">
-        <div className="max-w-2xl mx-auto px-4 text-center">
-          <div className="text-4xl mb-4">📬</div>
-          <h2 className="text-2xl md:text-3xl font-black text-white mb-3" style={{ fontFamily: "'Nunito', sans-serif" }}>
-            Nhận Ưu Đãi Mỗi Tuần
-          </h2>
-          <p className="text-white/60 text-sm mb-6">
-            Đăng ký nhận thông báo về các chương trình khuyến mãi và mẹo chăm sóc thú cưng.
-          </p>
-          <form className="flex gap-3 max-w-md mx-auto" onSubmit={handleNewsletterSubmit}>
-            <input
-              type="email" id="newsletter-email" value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (newsletterMessage) {
-                  setNewsletterMessage("");
-                  setNewsletterStatus("");
-                }
-              }}
-              placeholder="Nhập email của bạn..."
-              disabled={newsletterLoading}
-              className="flex-1 px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder:text-white/40
-                                       focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/50 focus:border-[var(--pet-coral)]
-                                       text-sm transition-all"
-            />
-            <button type="submit" id="newsletter-submit" disabled={newsletterLoading} className="btn-pet-primary px-6 shrink-0">
-              {newsletterLoading ? "Đang gửi..." : "Đăng Ký"}
-            </button>
-          </form>
-          {newsletterMessage && (
-            <p
-              className={`text-xs mt-4 ${newsletterStatus === "success" ? "text-emerald-300" : "text-red-300"}`}
-              role="status"
-            >
-              {newsletterMessage}
-            </p>
-          )}
-          <p className="text-xs text-white/30 mt-4">Không spam. Hủy đăng ký bất cứ lúc nào.</p>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/*  10. ADMIN QUICK-ACCESS                                       */}
+      {/*  9. ADMIN QUICK-ACCESS                                       */}
       {/* ============================================================ */}
       {isAdmin && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

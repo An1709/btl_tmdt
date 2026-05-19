@@ -1,9 +1,12 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import User from '../models/User.js';
+import Cart from '../models/Cart.js';
+import Coupon from '../models/Coupon.js';
 import moment from 'moment';
 import qs from 'qs';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import vnpayConfig from '../config/vnpayConfig.js';
 import { isValidVietnamMobilePhone, normalizeVietnamPhone } from '../utils/vietnamPhone.js';
 
@@ -35,6 +38,103 @@ const buildFullAddress = ({ streetAddress, ward, district, province }) =>
         .map((part) => String(part || '').trim())
         .filter(Boolean)
         .join(', ');
+
+const SHIPPING_FEE = 30000;
+const FREE_SHIPPING_THRESHOLD = 500000;
+
+const normalizeSelectedCartProductIds = (value) => {
+    const ids = Array.isArray(value) ? value : [];
+    return [...new Set(
+        ids
+            .map((id) => String(id || '').trim())
+            .filter((id) => mongoose.isValidObjectId(id)),
+    )];
+};
+
+const buildOrderFromSelectedCartItems = async (userId, selectedCartItemIds = []) => {
+    const selectedIds = normalizeSelectedCartProductIds(selectedCartItemIds);
+
+    if (!selectedIds.length) {
+        return { error: 'Vui lòng chọn ít nhất một sản phẩm để thanh toán.' };
+    }
+
+    const cart = await Cart.findOne({ user: userId }).populate('items.product');
+    const selectedSet = new Set(selectedIds);
+    const selectedCartItems = (cart?.items || []).filter((item) => {
+        const productId = item.product?._id?.toString?.() || item.product?.toString?.();
+        return productId && selectedSet.has(productId);
+    });
+
+    if (selectedCartItems.length !== selectedIds.length) {
+        return { error: 'Sản phẩm đã chọn không hợp lệ hoặc không thuộc giỏ hàng của bạn.' };
+    }
+
+    const orderItems = [];
+    for (const item of selectedCartItems) {
+        const product = item.product;
+        const quantity = Number(item.quantity);
+
+        if (!product) return { error: 'Không tìm thấy sản phẩm trong giỏ hàng.' };
+        if (!Number.isInteger(quantity) || quantity < 1) return { error: 'Số lượng sản phẩm không hợp lệ.' };
+        if (Number(product.stock || 0) < quantity) {
+            return { error: `Sản phẩm "${product.name}" không đủ hàng trong kho.` };
+        }
+
+        const image = Array.isArray(product.images) && product.images.length
+            ? product.images[0]
+            : product.image || '';
+
+        orderItems.push({
+            product: product._id,
+            name: product.name,
+            qty: quantity,
+            price: Number(product.price || 0),
+            image,
+        });
+    }
+
+    const itemsPrice = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const shippingPrice = itemsPrice >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+
+    return {
+        orderItems,
+        selectedCartProductIds: selectedCartItems.map((item) => item.product._id),
+        itemsPrice,
+        shippingPrice,
+    };
+};
+
+const calculateCouponDiscount = async (couponId, itemsPrice) => {
+    if (!couponId) return { discountAmount: 0 };
+    if (!mongoose.isValidObjectId(couponId)) return { error: 'Mã giảm giá không hợp lệ.' };
+
+    const coupon = await Coupon.findById(couponId);
+    if (!coupon) return { error: 'Mã giảm giá không tồn tại.' };
+    if (new Date() > coupon.expirationDate) return { error: 'Mã đã hết hạn.' };
+    if (itemsPrice < coupon.minOrderValue) return { error: `Đơn hàng tối thiểu phải là ${coupon.minOrderValue}đ.` };
+    if (coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit) {
+        return { error: 'Mã đã hết lượt sử dụng.' };
+    }
+
+    const discountAmount = coupon.discountType === 'percent'
+        ? (itemsPrice * coupon.value) / 100
+        : coupon.value;
+
+    return {
+        coupon,
+        discountAmount: Math.min(Math.max(discountAmount, 0), itemsPrice),
+    };
+};
+
+const removePurchasedCartItems = async (userId, productIds = []) => {
+    const ids = normalizeSelectedCartProductIds(productIds);
+    if (!ids.length) return;
+
+    await Cart.updateOne(
+        { user: userId },
+        { $pull: { items: { product: { $in: ids } } } },
+    );
+};
 
 const validateAndNormalizeShippingAddress = (shippingAddress = {}) => {
     const fullName = String(shippingAddress.fullName || '').trim();
@@ -329,17 +429,13 @@ function buildVNPayUrl(orderId, amount, ipAddr) {
 // Response (VNPay):  { ...order, paymentUrl: string }
 export const addOrderItems = async (req, res, next) => {
     const {
-        orderItems,
+        selectedCartItemIds,
         shippingAddress,
         paymentMethod,
-        itemsPrice,
-        shippingPrice,
-        totalPrice,
-        discountAmount,
         coupon,
     } = req.body;
 
-    if (!orderItems || orderItems.length === 0) {
+    if (!Array.isArray(selectedCartItemIds) || selectedCartItemIds.length === 0) {
         return res.status(400).json({ message: 'Giỏ hàng trống' });
     }
 
@@ -353,16 +449,35 @@ export const addOrderItems = async (req, res, next) => {
             getVNPaySettings();
         }
 
+        const selectedCartOrder = await buildOrderFromSelectedCartItems(req.user._id, selectedCartItemIds);
+
+        if (selectedCartOrder?.error) {
+            return res.status(400).json({ message: selectedCartOrder.error });
+        }
+
+        const safeOrderItems = selectedCartOrder.orderItems;
+        const safeItemsPrice = selectedCartOrder.itemsPrice;
+        const safeShippingPrice = selectedCartOrder.shippingPrice;
+        const couponResult = await calculateCouponDiscount(coupon, safeItemsPrice);
+
+        if (couponResult.error) {
+            return res.status(400).json({ message: couponResult.error });
+        }
+
+        const safeDiscountAmount = couponResult.discountAmount;
+        const safeTotalPrice = Math.max(safeItemsPrice + safeShippingPrice - safeDiscountAmount, 0);
+
         // 1. Save the order
         const order = new Order({
-            orderItems,
+            orderItems: safeOrderItems,
+            selectedCartProductIds: selectedCartOrder.selectedCartProductIds,
             user: req.user._id,
             shippingAddress: normalizedAddress.value,
             paymentMethod,
-            itemsPrice,
-            shippingPrice,
-            totalPrice,
-            discountAmount: discountAmount || 0,
+            itemsPrice: safeItemsPrice,
+            shippingPrice: safeShippingPrice,
+            totalPrice: safeTotalPrice,
+            discountAmount: safeDiscountAmount || 0,
             ...(coupon && { coupon }),
         });
         appendStatusHistory(order, {
@@ -379,7 +494,7 @@ export const addOrderItems = async (req, res, next) => {
         const createdOrder = await order.save();
 
         // 2. Decrement stock
-        for (const item of orderItems) {
+        for (const item of safeOrderItems) {
             const product = await Product.findById(item.product);
             if (product) {
                 product.stock = Math.max(0, product.stock - item.qty);
@@ -400,6 +515,8 @@ export const addOrderItems = async (req, res, next) => {
 
             return res.status(201).json({ ...withStatusHistory(createdOrder), paymentUrl });
         }
+
+        await removePurchasedCartItems(req.user._id, createdOrder.selectedCartProductIds);
 
         // 4. COD: return order as-is
         return res.status(201).json(withStatusHistory(createdOrder));

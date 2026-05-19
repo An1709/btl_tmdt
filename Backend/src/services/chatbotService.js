@@ -78,21 +78,31 @@ const PET_CATEGORY_TERMS = {
     accessory: ['phu kien', 'accessory', 'accessories'],
 };
 
-const PET_CATEGORY_LABELS = {
-    dog: 'chó',
-    cat: 'mèo',
-    rabbit: 'thỏ',
-    hamster: 'hamster',
-    parrot: 'vẹt',
-    fish: 'cá',
-    accessory: 'phụ kiện',
-};
+const DOG_BREED_TERMS = [
+    'american bulldog', 'american pit bull terrier', 'basset hound', 'beagle',
+    'boxer', 'chihuahua', 'cocker spaniel', 'english setter', 'german shorthaired',
+    'great pyrenees', 'havanese', 'japanese chin', 'keeshond', 'leonberger',
+    'miniature pinscher', 'newfoundland', 'pomeranian', 'pug', 'saint bernard',
+    'samoyed', 'scottish terrier', 'shiba inu', 'staffordshire bull terrier',
+    'wheaten terrier', 'yorkshire terrier',
+];
+
+const CAT_BREED_TERMS = [
+    'abyssinian', 'bengal', 'birman', 'bombay', 'british shorthair',
+    'egyptian mau', 'maine coon', 'persian', 'ragdoll', 'russian blue',
+    'siamese', 'sphynx',
+];
 
 const PRODUCT_TYPE_TERMS = [
     'thuc an', 'food', 'hat', 'pate', 'do choi', 'toy', 'phu kien',
     'chuong', 'long', 'vong co', 'day dat', 'cat ve sinh', 'sua tam',
     'cham soc', 've sinh',
 ];
+
+const hasProductTypeIntent = (message) => {
+    const normalizedMessage = normalizeText(message);
+    return PRODUCT_TYPE_TERMS.some((term) => normalizedMessage.includes(term));
+};
 
 export const validateChatMessage = (message) => {
     if (typeof message !== 'string' || !message.trim()) {
@@ -120,8 +130,66 @@ const hasDogPurchaseContext = (normalizedMessage) =>
     /\b(can|muon|tim|mua|goi y|tu van|san pham|do|thuc an|phu kien)\b.*\bcho\b/.test(normalizedMessage)
     || /\bcho\b.*\b(can|muon|tim|mua|goi y|tu van|san pham|do|thuc an|phu kien)\b/.test(normalizedMessage);
 
+const parsePriceAmount = (numberText, unitText = '') => {
+    const normalizedNumber = String(numberText || '').replace(',', '.');
+    const value = Number(normalizedNumber);
+    const unit = normalizeText(unitText);
+
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    if (['trieu', 'tr'].includes(unit)) return Math.round(value * 1000000);
+    if (['k', 'nghin', 'ngan'].includes(unit)) return Math.round(value * 1000);
+    if (value < 1000 && unit) return Math.round(value * 1000);
+    return Math.round(value);
+};
+
+const parsePriceIntent = (message) => {
+    const normalizedMessage = normalizeText(message).replace(/\s+/g, ' ');
+    const amountMatch = normalizedMessage.match(/(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k)?\b/);
+    const unitText = amountMatch?.[2] || '';
+    let amount = amountMatch ? parsePriceAmount(amountMatch[1], unitText) : 0;
+    const isCheap = /\b(re|gia re|binh dan|tiet kiem)\b/.test(normalizedMessage);
+    const isPremium = /\b(dat|cao cap|xin|tot nhat|gia cao)\b/.test(normalizedMessage);
+    const isBelow = /\b(duoi|nho hon|khong qua|toi da|<=)\b/.test(normalizedMessage);
+    const isAbove = /\b(tren|lon hon|tu|>=)\b/.test(normalizedMessage);
+    const isAround = /\b(khoang|tam|tam gia|gan)\b/.test(normalizedMessage);
+    const hasPriceContext = /\b(gia|duoi|nho hon|khong qua|toi da|tren|lon hon|tu|khoang|tam|tam gia|gan|re|dat|cao cap|nghin|ngan|trieu)\b/.test(normalizedMessage);
+
+    if (amount && !unitText && amount < 10000 && !hasPriceContext) {
+        amount = 0;
+    }
+
+    if (!amount && !isCheap && !isPremium) {
+        return { hasPriceIntent: false };
+    }
+
+    if (amount && isBelow) {
+        return { hasPriceIntent: true, maxPrice: amount, sort: isCheap ? 'price_asc' : 'relevance' };
+    }
+
+    if (amount && isAbove) {
+        return { hasPriceIntent: true, minPrice: amount, sort: isPremium ? 'premium' : 'relevance' };
+    }
+
+    if (amount && (isAround || !isBelow && !isAbove)) {
+        const range = Math.round(amount * 0.2);
+        return {
+            hasPriceIntent: true,
+            minPrice: Math.max(amount - range, 0),
+            maxPrice: amount + range,
+            targetPrice: amount,
+            sort: 'near_price',
+        };
+    }
+
+    return {
+        hasPriceIntent: true,
+        sort: isPremium ? 'premium' : 'price_asc',
+    };
+};
+
 const detectIntent = (message) => {
     const normalizedMessage = normalizeText(message);
+    const priceIntent = parsePriceIntent(message);
 
     const intent = Object.fromEntries(
         Object.entries(INTENT_KEYWORDS).map(([intent, keywords]) => [
@@ -133,7 +201,13 @@ const detectIntent = (message) => {
     intent.product = intent.product
         || /\b(chó|mèo|thỏ|vẹt|chim|cá|hamster)\b/i.test(message)
         || /\b(cho\s+cho|meo|tho|vet|chim|ca|hamster|dog|cat|rabbit|bird|parrot|fish|aquarium)\b/.test(normalizedMessage)
-        || hasDogPurchaseContext(normalizedMessage);
+        || hasDogPurchaseContext(normalizedMessage)
+        || priceIntent.hasPriceIntent;
+
+    intent.order = intent.order
+        || /\b(don.*cua toi|don.*cua minh|toi co don|don nao|dang giao|da mua gi|toi da mua|lich su mua)\b/.test(normalizedMessage);
+
+    intent.price = priceIntent.hasPriceIntent;
 
     return intent;
 };
@@ -144,6 +218,20 @@ const formatCurrency = (amount) =>
         currency: 'VND',
         maximumFractionDigits: 0,
     });
+
+const formatDateTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    });
+};
 
 const stripHtml = (value = '') => String(value).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
@@ -158,6 +246,8 @@ const getRawTerms = (message) =>
 
 const getPetSpecies = (message) => {
     const normalizedMessage = normalizeText(message);
+    if (DOG_BREED_TERMS.some((breed) => normalizedMessage.includes(breed))) return 'dog';
+    if (CAT_BREED_TERMS.some((breed) => normalizedMessage.includes(breed))) return 'cat';
     if (/\b(mèo|meo|cat|kitten)\b/i.test(message) || /\b(meo|cat|kitten)\b/.test(normalizedMessage)) return 'cat';
     if (/\b(chó|dog|puppy|cún)\b/i.test(message) || /\b(dog|puppy|cun)\b/.test(normalizedMessage) || /\bcho\s+cho\b/.test(normalizedMessage) || hasDogPurchaseContext(normalizedMessage)) return 'dog';
     if (/\b(thỏ|rabbit|bunny)\b/i.test(message) || /\b(tho|rabbit|bunny)\b/.test(normalizedMessage)) return 'rabbit';
@@ -174,15 +264,19 @@ const extractProductKeywords = (message, intent) => {
         'san', 'pham', 'goi', 'tu', 'van', 'petmart', 'co', 'khong',
         'gia', 'bao', 'nhieu', 'loai', 'nao', 'giup', 'mot', 'vai',
         'giam', 'khuyen', 'mai', 'sale', 'uu', 'dai', 'dang', 'gi', 'hay',
+        'duoi', 'tren', 'nho', 'lon', 'hon', 'khong', 'qua', 'toi', 'da',
+        'tam', 'khoang', 'gan', 'nghin', 'ngan', 'trieu', 're', 'dat',
+        'cao', 'cap', 'tot', 'nhat',
     ]);
 
     const normalizedWords = normalizeText(message)
         .split(/[^a-z0-9]+/)
         .map((word) => word.trim())
-        .filter((word) => word.length >= 2 && !ignoredWords.has(word));
+        .filter((word) => word.length >= 2 && !ignoredWords.has(word) && !/^\d+k?$/.test(word));
 
     const rawWords = getRawTerms(message)
         .filter((word) => word.length >= 2)
+        .filter((word) => !/^\d+[kK]?$/.test(word))
         .filter((word) => !ignoredWords.has(normalizeText(word)) || /^chó$/i.test(word));
 
     const keywords = new Set([...normalizedWords, ...rawWords]);
@@ -202,21 +296,35 @@ const extractProductKeywords = (message, intent) => {
 };
 
 const hasSpecificProductSignal = (message, intent) => {
-    if (intent.sale || getPetSpecies(message)) return true;
+    if (intent.sale || intent.price || getPetSpecies(message)) return true;
     return extractProductKeywords(message, intent).length > 0;
 };
 
-const buildProductFilter = async (message, intent, keywords) => {
+const buildBaseProductFilters = (intent, priceIntent) => {
     const filters = [];
-    const normalizedMessage = normalizeText(message);
-    const textKeywords = intent.sale
-        ? keywords.filter((keyword) => !['sale', 'giam', 'gia', 'giam gia', 'khuyen', 'mai', 'khuyen mai', 'uu', 'dai', 'uu dai'].includes(normalizeText(keyword)))
-        : keywords;
 
     if (intent.sale) {
         filters.push({ originalPrice: { $exists: true, $gt: 0 } });
         filters.push({ $expr: { $gt: ['$originalPrice', '$price'] } });
     }
+
+    if (priceIntent?.minPrice) {
+        filters.push({ price: { $gte: priceIntent.minPrice } });
+    }
+
+    if (priceIntent?.maxPrice) {
+        filters.push({ price: { $lte: priceIntent.maxPrice } });
+    }
+
+    return filters;
+};
+
+const buildProductFilter = async (message, intent, keywords) => {
+    const priceIntent = parsePriceIntent(message);
+    const filters = buildBaseProductFilters(intent, priceIntent);
+    const textKeywords = intent.sale
+        ? keywords.filter((keyword) => !['sale', 'giam', 'gia', 'giam gia', 'khuyen', 'mai', 'khuyen mai', 'uu', 'dai', 'uu dai'].includes(normalizeText(keyword)))
+        : keywords;
 
     if (!textKeywords.length) {
         return filters.length ? { $and: filters } : {};
@@ -273,18 +381,35 @@ const buildProductFilter = async (message, intent, keywords) => {
     return { $and: filters };
 };
 
+const getCategoryName = (category) => {
+    if (!category) return '';
+    if (typeof category === 'string') return category;
+    return category.name || category.slug || '';
+};
+
+const getCategorySlug = (category) => {
+    if (!category || typeof category === 'string') return '';
+    return category.slug || '';
+};
+
+const getCategorySearchText = (category) => {
+    if (!category) return '';
+    if (typeof category === 'string') return category;
+    return [category.name, category.slug, category.description].filter(Boolean).join(' ');
+};
+
 const getProductSearchText = (product) => normalizeText([
     product.name,
     product.description,
-    product.category?.name,
+    getCategorySearchText(product.category),
     formatSpecifications(product.specifications),
 ].filter(Boolean).join(' '));
 
 const productMatchesSpecies = (product, species) => {
     if (!species) return true;
     const productName = normalizeText(product.name);
-    const categoryName = normalizeText(product.category?.name || '');
-    const categorySlug = normalizeText(product.category?.slug || '');
+    const categoryName = normalizeText(getCategoryName(product.category));
+    const categorySlug = normalizeText(getCategorySlug(product.category));
     const categoryText = `${categoryName} ${categorySlug}`.trim();
     const descriptiveText = normalizeText([product.description, formatSpecifications(product.specifications)].filter(Boolean).join(' '));
 
@@ -320,7 +445,7 @@ const productMatchesSpecies = (product, species) => {
 const getProductMatchScore = (product, keywords) => {
     const searchText = getProductSearchText(product);
     const productName = normalizeText(product.name);
-    const categoryName = normalizeText(product.category?.name || '');
+    const categoryName = normalizeText(getCategoryName(product.category));
     const ignoredRankingTerms = new Set([
         'meo', 'cat', 'kitten', 'cho', 'dog', 'puppy', 'cun', 'tho', 'rabbit',
         'hamster', 'vet', 'chim', 'bird', 'parrot', 'ca', 'fish', 'aquarium',
@@ -337,8 +462,26 @@ const getProductMatchScore = (product, keywords) => {
     }, 0);
 };
 
-const sortProductsForSupport = (products, keywords) =>
+const sortProductsForSupport = (products, keywords, priceIntent = {}) =>
     [...products].sort((a, b) => {
+        if (priceIntent.sort === 'price_asc') {
+            const priceDelta = Number(a.price || 0) - Number(b.price || 0);
+            if (priceDelta) return priceDelta;
+        }
+
+        if (priceIntent.sort === 'premium') {
+            const ratingDelta = Number(b.averageRating || 0) - Number(a.averageRating || 0);
+            if (ratingDelta) return ratingDelta;
+            const priceDelta = Number(b.price || 0) - Number(a.price || 0);
+            if (priceDelta) return priceDelta;
+        }
+
+        if (priceIntent.sort === 'near_price' && priceIntent.targetPrice) {
+            const distanceDelta = Math.abs(Number(a.price || 0) - priceIntent.targetPrice)
+                - Math.abs(Number(b.price || 0) - priceIntent.targetPrice);
+            if (distanceDelta) return distanceDelta;
+        }
+
         const relevanceScore = getProductMatchScore(b, keywords) - getProductMatchScore(a, keywords);
         if (relevanceScore) return relevanceScore;
         const stockScore = Number(b.stock > 0) - Number(a.stock > 0);
@@ -385,7 +528,7 @@ const extractBehaviorSignals = (products) => {
         if (product.category?._id) categoryIds.add(getIdString(product.category._id));
 
         const searchText = getProductSearchText(product);
-        const nameAndCategoryText = normalizeText([product.name, product.category?.name, product.category?.slug].filter(Boolean).join(' '));
+        const nameAndCategoryText = normalizeText([product.name, getCategorySearchText(product.category)].filter(Boolean).join(' '));
         if (/\bcho\b/.test(nameAndCategoryText)) {
             keywords.add('dog');
             keywords.add('puppy');
@@ -522,34 +665,39 @@ const findRelevantProducts = async (message, intent) => {
     try {
         const keywords = extractProductKeywords(message, intent);
         const petSpecies = getPetSpecies(message);
+        const priceIntent = parsePriceIntent(message);
+        const hasSpecificTypeIntent = hasProductTypeIntent(message);
         const strictCategoryMode = Boolean(petSpecies);
         const filter = await buildProductFilter(message, intent, keywords);
         const products = await Product.find(filter)
             .populate('category', 'name slug')
             .select(PRODUCT_SELECT_FIELDS)
             .sort({ stock: -1, averageRating: -1, sold: -1, createdAt: -1 })
-            .limit(12)
+            .limit(80)
             .lean();
         let speciesProducts = petSpecies
             ? products.filter((product) => productMatchesSpecies(product, petSpecies))
             : products;
 
-        if (petSpecies && !speciesProducts.length) {
-            const broaderProducts = await Product.find({})
+        if (petSpecies && !speciesProducts.length && !hasSpecificTypeIntent) {
+            const baseFilters = buildBaseProductFilters(intent, priceIntent);
+            const broaderFilter = baseFilters.length ? { $and: baseFilters } : {};
+            const broaderProducts = await Product.find(broaderFilter)
                 .populate('category', 'name slug')
                 .select(PRODUCT_SELECT_FIELDS)
                 .sort({ stock: -1, averageRating: -1, sold: -1, createdAt: -1 })
-                .limit(50)
+                .limit(120)
                 .lean();
 
             speciesProducts = broaderProducts.filter((product) => productMatchesSpecies(product, petSpecies));
         }
 
         return {
-            products: sortProductsForSupport(petSpecies ? speciesProducts : products, keywords).slice(0, PRODUCT_LIMIT),
+            products: sortProductsForSupport(petSpecies ? speciesProducts : products, keywords, priceIntent).slice(0, PRODUCT_LIMIT),
             lookupFailed: false,
             strictCategoryMode,
             requestedSpecies: petSpecies,
+            priceIntent,
         };
     } catch {
         return {
@@ -643,12 +791,7 @@ const getProductReply = async (message, intent, user) => {
     }
 
     if (!productContext.products.length) {
-        if (productContext.strictCategoryMode && productContext.requestedSpecies) {
-            const label = PET_CATEGORY_LABELS[productContext.requestedSpecies] || 'danh mục này';
-            return `Hiện tại mình chưa tìm thấy sản phẩm phù hợp cho ${label}.`;
-        }
-
-        return 'Hiện tại mình chưa tìm thấy sản phẩm phù hợp. Bạn có thể thử tìm theo chó, mèo, thỏ, hamster, vẹt, cá hoặc phụ kiện.';
+        return 'Hiện tại mình chưa tìm thấy sản phẩm phù hợp.';
     }
 
     const prefix = intent.sale
@@ -672,7 +815,10 @@ const extractBlogKeywords = (message) => {
         .map((word) => word.trim())
         .filter((word) => word.length >= 2 && !BLOG_IGNORED_TERMS.has(word));
 
-    return [...new Set(words)].slice(0, 8);
+    const species = getPetSpecies(message);
+    const speciesTerms = species && PET_CATEGORY_TERMS[species] ? PET_CATEGORY_TERMS[species] : [];
+
+    return [...new Set([...words, ...speciesTerms])].slice(0, 8);
 };
 
 const formatBlogSuggestions = (posts) => posts.map((post, index) => {
@@ -682,7 +828,7 @@ const formatBlogSuggestions = (posts) => posts.map((post, index) => {
         Array.isArray(post.likes) && post.likes.length ? `${post.likes.length} lượt thích` : null,
     ].filter(Boolean).join(', ');
 
-    return `${index + 1}. ${post.title}${stats ? ` (${stats})` : ''}${excerpt ? ` - ${excerpt}` : ''}. Xem tại /blog/${post.slug}`;
+    return `${index + 1}. ${post.title}${stats ? ` (${stats})` : ''}${excerpt ? ` - ${excerpt}` : ''}.`;
 }).join('\n');
 
 const getBlogReply = async (message) => {
@@ -729,20 +875,30 @@ const getRequestedOrderCode = (message) => {
 
 const asksForOwnOrder = (message) => {
     const normalizedMessage = normalizeText(message);
-    return /(cua toi|cua minh|don toi|don minh|gan nhat|ma don|#|order)/.test(normalizedMessage)
+    return /(cua toi|cua minh|don toi|don minh|toi co don|don nao|dang giao|da mua gi|toi da mua|lich su mua|gan nhat|ma don|#|order)/.test(normalizedMessage)
         || Boolean(message.match(/[a-f\d]{24}/i));
 };
 
-const findOrdersForUser = async ({ userId, requestedCode }) => {
+const parseOrderStatusIntent = (message) => {
+    const normalizedMessage = normalizeText(message);
+    if (/\b(dang giao|van chuyen|shipping)\b/.test(normalizedMessage)) return 'Shipping';
+    if (/\b(dang xu ly|xu ly|processing)\b/.test(normalizedMessage)) return 'Processing';
+    if (/\b(cho xac nhan|pending|cho duyet)\b/.test(normalizedMessage)) return 'Pending';
+    if (/\b(da giao|delivered|hoan tat)\b/.test(normalizedMessage)) return 'Delivered';
+    if (/\b(da huy|huy)\b/.test(normalizedMessage)) return 'Cancelled';
+    return '';
+};
+
+const findOrdersForUser = async ({ userId, requestedCode, status }) => {
     if (requestedCode && mongoose.isValidObjectId(requestedCode)) {
-        return Order.find({ _id: requestedCode, user: userId })
+        return Order.find({ _id: requestedCode, user: userId, ...(status && { status }) })
             .select('orderItems totalPrice status paymentMethod isPaid createdAt cancelStatus cancelRequested cancelRequestedAt')
             .sort({ createdAt: -1 })
             .limit(1)
             .lean();
     }
 
-    const orders = await Order.find({ user: userId })
+    const orders = await Order.find({ user: userId, ...(status && { status }) })
         .select('orderItems totalPrice status paymentMethod isPaid createdAt cancelStatus cancelRequested cancelRequestedAt')
         .sort({ createdAt: -1 })
         .limit(ORDER_LIMIT)
@@ -780,6 +936,7 @@ const formatOrderSummary = (order) => {
         `Tổng tiền ${formatCurrency(order.totalPrice)}`,
         `Thanh toán: ${paymentMethod}`,
         order.isPaid ? 'đã thanh toán' : 'chưa thanh toán',
+        order.createdAt ? `Ngày đặt: ${formatDateTime(order.createdAt)}` : null,
         items ? `Sản phẩm: ${items}` : null,
         getCancellationGuidance(order),
     ].filter(Boolean).join('. ');
@@ -802,20 +959,27 @@ const getOrderReply = async (message, user, intent) => {
     }
 
     if (!user?._id) {
-        return 'Bạn vui lòng đăng nhập để mình kiểm tra đơn hàng thuộc tài khoản của bạn. Mình không thể xem đơn hàng khi chưa xác thực tài khoản.';
+        return 'Bạn cần đăng nhập để mình kiểm tra đơn hàng.';
     }
 
     try {
         const requestedCode = getRequestedOrderCode(message);
-        const orders = await findOrdersForUser({ userId: user._id, requestedCode });
+        const requestedStatus = parseOrderStatusIntent(message);
+        const orders = await findOrdersForUser({ userId: user._id, requestedCode, status: requestedStatus });
 
         if (!orders.length) {
             return requestedCode
                 ? 'Mình không tìm thấy đơn hàng phù hợp trong tài khoản hiện tại. Vui lòng kiểm tra lại mã đơn hoặc mở trang Đơn hàng của bạn.'
-                : 'Tài khoản hiện tại chưa có đơn hàng nào để kiểm tra.';
+                : requestedStatus
+                    ? `Tài khoản hiện tại chưa có đơn hàng nào ở trạng thái ${ORDER_STATUS_LABELS[requestedStatus] || requestedStatus}.`
+                    : 'Tài khoản hiện tại chưa có đơn hàng nào để kiểm tra.';
         }
 
-        const title = requestedCode ? 'Mình tìm thấy đơn hàng này trong tài khoản của bạn:' : 'Các đơn hàng gần đây của bạn:';
+        const title = requestedCode
+            ? 'Mình tìm thấy đơn hàng này trong tài khoản của bạn:'
+            : requestedStatus
+                ? `Các đơn hàng ${ORDER_STATUS_LABELS[requestedStatus] || requestedStatus} của bạn:`
+                : 'Các đơn hàng gần đây của bạn:';
         return `${title}\n${orders.map(formatOrderSummary).join('\n')}`;
     } catch {
         return 'Mình chưa thể tải đơn hàng lúc này. Bạn vui lòng thử lại sau hoặc mở trang Đơn hàng để kiểm tra.';
@@ -852,7 +1016,7 @@ const getStaticReply = (intent) => {
     }
 
     if (intent.checkout) {
-        return 'Để đặt hàng, bạn kiểm tra giỏ hàng, nhập địa chỉ và số điện thoại giao hàng, chọn phương thức thanh toán COD hoặc VNPay, rồi xác nhận đặt hàng. Sau đó bạn có thể theo dõi trạng thái trong mục Đơn hàng.';
+        return 'Để đặt hàng, bạn kiểm tra giỏ hàng, nhập địa chỉ và số điện thoại giao hàng, chọn COD hoặc VNPay rồi xác nhận. Phí vận chuyển hiện là 30.000đ và miễn phí khi đơn hàng từ 500.000đ.';
     }
 
     if (intent.cancel) {
@@ -895,6 +1059,8 @@ export const generateChatbotReply = async ({ message, user }) => {
         reply = await getBlogReply(message);
     } else if (intent.about) {
         reply = getStaticReply(intent);
+    } else if ((intent.order || intent.cancel) && asksForOwnOrder(message)) {
+        reply = await getOrderReply(message, user, intent);
     } else if (intent.product) {
         reply = await getProductReply(message, intent, user);
     } else if (intent.cancel && !asksForOwnOrder(message)) {

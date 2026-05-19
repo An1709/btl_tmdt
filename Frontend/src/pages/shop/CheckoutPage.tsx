@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useCartStore } from "@/stores/useCartStore";
 import { orderService } from "@/services/orderService";
 import { couponService } from "@/services/couponService";
@@ -19,7 +19,21 @@ type AddressErrors = Partial<Record<keyof CheckoutAddress, string>>;
 
 const CheckoutPage = () => {
     const navigate = useNavigate();
-    const { items, totalPrice, clearCart } = useCartStore();
+    const location = useLocation();
+    const { items, fetchCart, currentUserId } = useCartStore();
+    const selectedProductIds = useMemo(() => {
+        const state = location.state as { selectedProductIds?: string[]; selectedForUserId?: string | null } | null;
+        if (state?.selectedForUserId && state.selectedForUserId !== currentUserId) {
+            return [];
+        }
+        return Array.isArray(state?.selectedProductIds)
+            ? [...new Set(state.selectedProductIds.filter(Boolean))]
+            : [];
+    }, [currentUserId, location.state]);
+    const checkoutItems = useMemo(
+        () => items.filter((item) => selectedProductIds.includes(item.product.id)),
+        [items, selectedProductIds],
+    );
     const [loading, setLoading] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
     const [couponCode, setCouponCode] = useState("");
@@ -36,9 +50,15 @@ const CheckoutPage = () => {
     });
     const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
 
-    const subtotal = totalPrice();
+    const subtotal = checkoutItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
     const shippingFee = subtotal >= 500000 ? 0 : 30000;
     const total = subtotal + shippingFee - discount;
+
+    useEffect(() => {
+        setDiscount(0);
+        setCouponId(undefined);
+        setCouponCode("");
+    }, [subtotal]);
 
     const handleApplyCoupon = async () => {
         if (!couponCode.trim()) return;
@@ -89,8 +109,8 @@ const CheckoutPage = () => {
             toast.error("Vui lòng kiểm tra lại thông tin giao hàng.");
             return;
         }
-        if (items.length === 0) {
-            toast.error("Giỏ hàng trống.");
+        if (checkoutItems.length === 0) {
+            toast.error("Vui lòng chọn ít nhất một sản phẩm để thanh toán.");
             return;
         }
         setLoading(true);
@@ -99,7 +119,8 @@ const CheckoutPage = () => {
             const fullAddress = [streetAddress, address.ward, address.district, address.province].join(", ");
 
             const order = await orderService.createOrder({
-                orderItems: items.map((i) => ({
+                selectedCartItemIds: selectedProductIds,
+                orderItems: checkoutItems.map((i) => ({
                     product: i.product.id,
                     name: i.product.name,
                     qty: i.quantity,
@@ -127,10 +148,11 @@ const CheckoutPage = () => {
 
             // Backend returns paymentUrl in the response for VNPay orders
             if (paymentMethod === "vnpay" && order.paymentUrl) {
-                await clearCart();
                 window.location.href = order.paymentUrl;
             } else {
-                await clearCart();
+                if (currentUserId) {
+                    await fetchCart(currentUserId);
+                }
                 toast.success("Đặt hàng thành công! 🎉");
                 navigate(`/orders/${order._id}`);
             }
@@ -152,6 +174,13 @@ const CheckoutPage = () => {
     return (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
             <h1 className="section-title mb-6">💳 Thanh Toán</h1>
+
+            {checkoutItems.length === 0 ? (
+                <div className="bg-white dark:bg-card rounded-2xl border border-border p-8 text-center">
+                    <p className="text-muted-foreground mb-5">Vui lòng chọn ít nhất một sản phẩm để thanh toán.</p>
+                    <Link to="/cart" className="btn-pet-primary inline-flex">Quay lại giỏ hàng</Link>
+                </div>
+            ) : (
 
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* Left: form */}
@@ -237,7 +266,7 @@ const CheckoutPage = () => {
                     <div className="bg-white dark:bg-card rounded-2xl border border-border p-5 sticky top-24">
                         <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>Tóm tắt đơn hàng</h2>
                         <div className="flex flex-col gap-2 text-sm mb-4">
-                            {items.map((i) => (
+                            {checkoutItems.map((i) => (
                                 <div key={i.product.id} className="flex justify-between text-muted-foreground">
                                     <span className="truncate">{i.product.name} × {i.quantity}</span>
                                     <span className="font-semibold text-foreground shrink-0 ml-2">{formatCurrency(i.product.price * i.quantity)}</span>
@@ -252,12 +281,13 @@ const CheckoutPage = () => {
                                 </div>
                             </div>
                         </div>
-                        <button onClick={handleOrder} disabled={loading || items.length === 0} className="btn-pet-primary w-full justify-center disabled:opacity-50">
+                        <button onClick={handleOrder} disabled={loading || checkoutItems.length === 0} className="btn-pet-primary w-full justify-center disabled:opacity-50">
                             {loading ? "Đang xử lý..." : paymentMethod === "vnpay" ? "Thanh toán VNPAY →" : "Đặt hàng ngay 🐾"}
                         </button>
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 };

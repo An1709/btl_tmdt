@@ -2,6 +2,7 @@ import moment from 'moment';
 import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 import Order from '../models/Order.js';
+import Cart from '../models/Cart.js';
 
 const VNPAY_CONFIG_ERROR = 'Thiếu cấu hình VNPay. Vui lòng kiểm tra VNP_TMN_CODE, VNP_HASH_SECRET và VNP_RETURN_URL.';
 const VNPAY_EXPECTED_RETURN_PATH = '/api/payment/vnpay_return';
@@ -157,7 +158,16 @@ async function markOrderPaidFromVNPay(order, queryParams) {
     };
     appendPaymentStatusHistory(order, 'Processing', 'Thanh toán VNPay thành công, đơn hàng đang được xử lý');
 
-    return order.save();
+    const updatedOrder = await order.save();
+
+    if (Array.isArray(updatedOrder.selectedCartProductIds) && updatedOrder.selectedCartProductIds.length) {
+        await Cart.updateOne(
+            { user: updatedOrder.user },
+            { $pull: { items: { product: { $in: updatedOrder.selectedCartProductIds } } } },
+        );
+    }
+
+    return updatedOrder;
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,10 @@ const orderSchema = new mongoose.Schema({
         price: { type: Number, required: true },
         image: { type: String }
     }],
+    selectedCartProductIds: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Product'
+    }],
     shippingAddress: {
         fullName: { type: String, trim: true },
         address: { type: String, required: true },

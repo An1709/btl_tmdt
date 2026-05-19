@@ -5,11 +5,21 @@ import { formatCurrency } from "@/utils/format";
 const SHIPPING_FEE = 30000;
 const FREE_SHIPPING_THRESHOLD = 500000;
 
-const CartSummary = () => {
-    const subtotal = useCartStore((s) => s.totalPrice)();
-    const count = useCartStore((s) => s.totalCount)();
+interface CartSummaryProps {
+    subtotal?: number;
+    count?: number;
+    selectedProductIds?: string[];
+}
+
+const CartSummary = ({ subtotal: selectedSubtotal, count: selectedCount, selectedProductIds = [] }: CartSummaryProps) => {
+    const fallbackSubtotal = useCartStore((s) => s.totalPrice)();
+    const fallbackCount = useCartStore((s) => s.totalCount)();
+    const currentUserId = useCartStore((s) => s.currentUserId);
+    const subtotal = selectedSubtotal ?? fallbackSubtotal;
+    const count = selectedCount ?? fallbackCount;
     const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
     const total = subtotal + shippingFee;
+    const hasSelection = count > 0;
 
     return (
         <div className="bg-white dark:bg-card rounded-2xl border border-border shadow-sm p-6 sticky top-24">
@@ -42,12 +52,29 @@ const CartSummary = () => {
                 </div>
             </div>
 
-            <Link
-                to="/checkout"
-                className="btn-pet-primary w-full justify-center mt-5 py-3 text-sm"
-            >
-                Tiến hành thanh toán →
-            </Link>
+            {!hasSelection && (
+                <p className="mt-4 text-xs text-red-500 bg-red-50 dark:bg-red-950/30 rounded-xl px-3 py-2">
+                    Vui lòng chọn ít nhất một sản phẩm để thanh toán.
+                </p>
+            )}
+
+            {hasSelection ? (
+                <Link
+                    to="/checkout"
+                    state={{ selectedProductIds, selectedForUserId: currentUserId }}
+                    className="btn-pet-primary w-full justify-center mt-5 py-3 text-sm"
+                >
+                    Thanh toán sản phẩm đã chọn →
+                </Link>
+            ) : (
+                <button
+                    type="button"
+                    disabled
+                    className="btn-pet-primary w-full justify-center mt-5 py-3 text-sm opacity-50 cursor-not-allowed"
+                >
+                    Thanh toán sản phẩm đã chọn →
+                </button>
+            )}
 
             <Link
                 to="/shop"

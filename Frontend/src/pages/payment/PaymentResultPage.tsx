@@ -19,7 +19,10 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
+import { useEffect } from "react";
 import { useSearchParams, Link } from "react-router";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useCartStore } from "@/stores/useCartStore";
 
 const PaymentResultPage = () => {
     const [searchParams] = useSearchParams();
@@ -28,8 +31,16 @@ const PaymentResultPage = () => {
     const status  = searchParams.get("status");   // "success" | "failed" | "error"
     const orderId = searchParams.get("orderId") || "";
     const code    = searchParams.get("code") || "";
+    const user = useAuthStore((state) => state.user);
+    const fetchCart = useCartStore((state) => state.fetchCart);
 
     const isSuccess = status === "success";
+
+    useEffect(() => {
+        if (isSuccess && user?._id) {
+            void fetchCart(user._id);
+        }
+    }, [fetchCart, isSuccess, user?._id]);
 
     return (
         <div className="max-w-lg mx-auto px-4 py-24 text-center">

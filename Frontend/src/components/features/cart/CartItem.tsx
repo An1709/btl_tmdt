@@ -5,9 +5,11 @@ import { toast } from "sonner";
 
 interface CartItemProps {
     item: ICartItem;
+    selected?: boolean;
+    onSelectChange?: (productId: string, selected: boolean) => void;
 }
 
-const CartItemComponent = ({ item }: CartItemProps) => {
+const CartItemComponent = ({ item, selected = false, onSelectChange }: CartItemProps) => {
     const { updateQty, removeItem } = useCartStore();
     const { product, quantity } = item;
 
@@ -29,6 +31,15 @@ const CartItemComponent = ({ item }: CartItemProps) => {
 
     return (
         <div className="flex items-start gap-4 p-4 bg-white dark:bg-card rounded-2xl border border-border shadow-sm">
+            <label className="pt-7 shrink-0" aria-label={`Chọn ${product.name}`}>
+                <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={(event) => onSelectChange?.(product.id, event.target.checked)}
+                    className="w-4 h-4 accent-[var(--pet-coral)] cursor-pointer"
+                />
+            </label>
+
             {/* Image */}
             <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-muted/30">
                 <img

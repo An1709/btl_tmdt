@@ -2,6 +2,7 @@ import api from "@/lib/axios";
 import type { Order, OrderStatus, PaymentMethod } from "@/types/order";
 
 export interface CreateOrderPayload {
+    selectedCartItemIds?: string[];
     orderItems: {
         product: string;
         name: string;

@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import User from '../models/User.js';
+import { uploadImage } from '../utils/cloudinaryUpload.js';
 
 const USER_ROLES = ['customer', 'admin', 'staff'];
 const MEMBERSHIP_THRESHOLDS = [
@@ -95,7 +96,10 @@ export const updateUserAvatar = async (req, res) => {
         const user = await User.findById(req.user._id);
         if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
 
-        user.avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const avatarUrl = await uploadImage(req.file, 'petmart/avatars');
+        user.avatarUrl = avatarUrl.startsWith('/uploads/')
+            ? `${req.protocol}://${req.get('host')}${avatarUrl}`
+            : avatarUrl;
         const updatedUser = await user.save();
 
         return res.status(200).json({
@@ -105,6 +109,10 @@ export const updateUserAvatar = async (req, res) => {
         });
     } catch (error) {
         console.error('Error in updateUserAvatar:', error);
+        if (error.message === 'CLOUDINARY_CONFIG_MISSING') {
+            return res.status(500).json({ message: 'Thiếu cấu hình Cloudinary. Vui lòng kiểm tra CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY và CLOUDINARY_API_SECRET.' });
+        }
+
         return res.status(500).json({ message: 'Không thể cập nhật ảnh đại diện. Vui lòng thử lại.' });
     }
 };

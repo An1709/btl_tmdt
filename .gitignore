@@ -5,5 +5,30 @@ Backend/ml/models/*.keras
 Backend/ml/models/*.h5
 Backend/ml/models/*.onnx
 !Backend/ml/models/.gitkeep
+!Backend/ml/models/pet_breed_model.keras
 Backend/ml/outputs/*
 !Backend/ml/outputs/.gitkeep
+Backend/uploads/pet-vision/tmp/
+
+# Dependencies and build outputs
+node_modules/
+Backend/node_modules/
+Frontend/node_modules/
+dist/
+Backend/dist/
+Frontend/dist/
+build/
+Backend/build/
+Frontend/build/
+
+# Environment files
+.env
+Backend/.env
+Frontend/.env
+*.env.local
+*.env.*.local
+
+# Logs and OS/editor files
+logs/
+*.log
+.DS_Store

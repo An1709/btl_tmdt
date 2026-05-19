@@ -17,6 +17,12 @@ const MAX_VERIFICATION_ATTEMPTS = 5;
 const EMAIL_VERIFICATION_PURPOSE = 'email_verification';
 const PASSWORD_RESET_PURPOSE = 'password_reset';
 const PASSWORD_RESET_SUCCESS_MESSAGE = 'Nếu thông tin tài khoản hợp lệ, mã xác nhận sẽ được gửi đến email của bạn.';
+const isProduction = process.env.NODE_ENV === 'production';
+const refreshCookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+};
 
 const normalizeEmail = (email) => email?.trim().toLowerCase();
 const normalizeUsername = (username) => username?.trim().toLowerCase();
@@ -269,11 +275,7 @@ export const signIn = async (req, res) => {
         
         // trả về refresh token về trong cookie
         res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            // Nếu đang chạy dưới local thì false, deploy thì true
-            secure: false, 
-            // Ở local dùng lax để trình duyệt chấp nhận cookie
-            sameSite: 'lax',
+            ...refreshCookieOptions,
             maxAge: REFRESH_TOKEN_TTL, 
         });
 
@@ -571,7 +573,7 @@ export const signOut = async (req, res) => {
             await Session.deleteOne({ refreshToken: refreshToken });
          
             //xóa refresh token trong cookie
-            res.clearCookie('refreshToken');
+            res.clearCookie('refreshToken', refreshCookieOptions);
         }
         return res.sendStatus(204); // logout thành công dù có hay không
     } catch (error) {

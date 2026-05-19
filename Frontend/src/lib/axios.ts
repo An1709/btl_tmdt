@@ -4,7 +4,7 @@ import axios from "axios";
 //file này dùng để cấu hình axios instance với các interceptor để tự động thêm token xác thực vào header của các yêu cầu và xử lý làm mới token khi hết hạn.  
 
 const api = axios.create({
-  baseURL: import.meta.env.MODE === "development" ? "http://localhost:5001/api" : "/api",
+  baseURL: import.meta.env.VITE_API_URL,
   withCredentials: true,
 });
 

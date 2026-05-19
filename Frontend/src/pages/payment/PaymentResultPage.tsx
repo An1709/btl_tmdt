@@ -4,10 +4,10 @@
  * HOW THIS WORKS:
  * ──────────────────────────────────────────────────────────────────────────
  * 1. User pays on VNPay → VNPay redirects browser to:
- *      http://localhost:5001/api/payment/vnpay_return?vnp_ResponseCode=00&...
+ *      {VNP_RETURN_URL}?vnp_ResponseCode=00&...
  *
  * 2. Backend verifies the signature and does:
- *      res.redirect('http://localhost:5173/payment/result?status=success&orderId=XXX')
+ *      res.redirect('{CLIENT_URL}/payment/result?status=success&orderId=XXX')
  *
  * 3. React Router renders THIS page. We just read ?status= from the URL.
  *

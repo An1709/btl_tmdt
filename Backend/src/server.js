@@ -1,5 +1,5 @@
 import express from 'express';
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
@@ -25,16 +25,38 @@ import petVisionRoutes from './routes/petVisionRoutes.js';
 import adminPetVisionRoutes from './routes/adminPetVisionRoutes.js';
 
 
-// Cấu hình
-dotenv.config();
 const PORT = process.env.PORT || 5001;
 
 const app = express();
+app.set('trust proxy', 1);
+
+const parseAllowedOrigins = () => {
+    const origins = new Set(['http://localhost:5173']);
+
+    if (process.env.CLIENT_URL) {
+        process.env.CLIENT_URL
+            .split(',')
+            .map((origin) => origin.trim())
+            .filter(Boolean)
+            .forEach((origin) => origins.add(origin));
+    }
+
+    return origins;
+};
+
+const allowedOrigins = parseAllowedOrigins();
 
 // --- Middlewares ---
 // 1. Xử lý CORS (Cho phép Frontend gọi API)
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin(origin, callback) {
+        if (!origin || allowedOrigins.has(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true
 }));
 
@@ -96,7 +118,7 @@ app.use((err, req, res, next) => {
 connectDB().then(() => {
     app.listen(PORT, () => {
         console.log(`🚀 Server is running on port ${PORT}`);
-        console.log(`🔗 Frontend allowed: ${process.env.CLIENT_URL}`);
+        console.log(`🔗 Frontend allowed: ${Array.from(allowedOrigins).join(', ')}`);
     });
 }).catch((error) => {
     console.error('❌ Failed to connect to the database:', error);

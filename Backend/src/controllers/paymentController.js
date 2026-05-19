@@ -60,6 +60,13 @@ function getUrlPath(url) {
     }
 }
 
+function getPrimaryClientUrl() {
+    return String(process.env.CLIENT_URL || '')
+        .split(',')
+        .map((url) => url.trim())
+        .filter(Boolean)[0] || '';
+}
+
 function getVNPaySettings() {
     const tmnCode = String(vnpayConfig.vnp_TmnCode || '').trim();
     const secretKey = String(vnpayConfig.vnp_HashSecret || '').trim();
@@ -240,10 +247,14 @@ export const createPaymentUrl = (req, res) => {
 // Flow: VNPay → GET this endpoint → verify → res.redirect to React /payment/result
 // ---------------------------------------------------------------------------
 export const vnpayReturn = async (req, res) => {
-    const frontendUrl  = (process.env.CLIENT_URL || 'http://localhost:5173').trim();
+    const frontendUrl  = getPrimaryClientUrl();
     const txnRef       = req.query['vnp_TxnRef'] || '';
     const responseCode = req.query['vnp_ResponseCode'];
     const secretKey    = (vnpayConfig.vnp_HashSecret || '').trim();
+
+    if (!frontendUrl) {
+        return res.status(500).send('Thiếu cấu hình CLIENT_URL.');
+    }
 
     const { isValid } = verifySignature(req.query, secretKey);
 

@@ -27,6 +27,19 @@ const NEXT_STATUS_ACTION: Partial<Record<OrderStatus, string>> = {
     Shipping: "Hoàn tất giao hàng",
 };
 
+const getShippingAddressText = (order: Order) => {
+    const shippingAddress = order.shippingAddress;
+
+    if (shippingAddress?.fullAddress) return shippingAddress.fullAddress;
+
+    return [
+        shippingAddress?.streetAddress || shippingAddress?.address,
+        shippingAddress?.ward,
+        shippingAddress?.district,
+        shippingAddress?.province || shippingAddress?.city,
+    ].filter(Boolean).join(", ");
+};
+
 const OrderManagePage = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -85,7 +98,15 @@ const OrderManagePage = () => {
 
     const columns: Column<Order>[] = [
         { key: "id", header: "Mã đơn", render: (o) => <span className="font-mono text-xs font-semibold">#{o._id.slice(-8).toUpperCase()}</span> },
-        { key: "customer", header: "Khách hàng", render: (o) => <span className="text-foreground">{o.shippingAddress.phone}</span> },
+        {
+            key: "customer", header: "Khách hàng", render: (o) => (
+                <div className="max-w-64 text-sm">
+                    {o.shippingAddress.fullName && <p className="font-semibold text-foreground">{o.shippingAddress.fullName}</p>}
+                    <p className="text-foreground">{o.shippingAddress.phone}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{getShippingAddressText(o)}</p>
+                </div>
+            )
+        },
         { key: "date", header: "Ngày", render: (o) => formatDate(o.createdAt) },
         { key: "total", header: "Tổng tiền", render: (o) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(o.totalPrice)}</span> },
         {

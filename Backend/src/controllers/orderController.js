@@ -5,6 +5,7 @@ import moment from 'moment';
 import qs from 'qs';
 import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
+import { isValidVietnamMobilePhone, normalizeVietnamPhone } from '../utils/vietnamPhone.js';
 
 const ORDER_STATUS_FLOW = ['Pending', 'Processing', 'Shipping', 'Delivered'];
 const CUSTOMER_CANCELLABLE_STATUSES = ['Pending', 'Processing'];
@@ -28,6 +29,49 @@ const ORDER_STATUS_NOTES = {
 const VNPAY_CONFIG_ERROR = 'Thiếu cấu hình VNPay. Vui lòng kiểm tra VNP_TMN_CODE, VNP_HASH_SECRET và VNP_RETURN_URL.';
 const VNPAY_EXPECTED_RETURN_PATH = '/api/payment/vnpay_return';
 const VNPAY_EXPECTED_IPN_PATH = '/api/payment/vnpay_ipn';
+
+const buildFullAddress = ({ streetAddress, ward, district, province }) =>
+    [streetAddress, ward, district, province]
+        .map((part) => String(part || '').trim())
+        .filter(Boolean)
+        .join(', ');
+
+const validateAndNormalizeShippingAddress = (shippingAddress = {}) => {
+    const fullName = String(shippingAddress.fullName || '').trim();
+    const rawPhone = String(shippingAddress.phone || '').trim();
+    const normalizedPhone = normalizeVietnamPhone(rawPhone);
+    const province = String(shippingAddress.province || shippingAddress.city || '').trim();
+    const district = String(shippingAddress.district || '').trim();
+    const ward = String(shippingAddress.ward || '').trim();
+    const streetAddress = String(shippingAddress.streetAddress || shippingAddress.address || '').trim();
+
+    if (!fullName) return { error: 'Vui lòng nhập họ và tên.' };
+    if (!rawPhone) return { error: 'Vui lòng nhập số điện thoại.' };
+    if (!/^\d+$/.test(normalizedPhone)) return { error: 'Số điện thoại không hợp lệ.' };
+    if (!isValidVietnamMobilePhone(rawPhone)) {
+        return { error: 'Số điện thoại phải là số di động Việt Nam hợp lệ.' };
+    }
+    if (!province) return { error: 'Vui lòng chọn Tỉnh/Thành phố.' };
+    if (!district) return { error: 'Vui lòng chọn Quận/Huyện.' };
+    if (!ward) return { error: 'Vui lòng chọn Phường/Xã.' };
+    if (!streetAddress) return { error: 'Vui lòng nhập địa chỉ cụ thể.' };
+
+    const fullAddress = buildFullAddress({ streetAddress, ward, district, province });
+
+    return {
+        value: {
+            fullName,
+            phone: normalizedPhone,
+            province,
+            district,
+            ward,
+            streetAddress,
+            fullAddress,
+            address: streetAddress,
+            city: province,
+        },
+    };
+};
 
 const getActorRole = (user) => user?.role || 'customer';
 
@@ -300,6 +344,11 @@ export const addOrderItems = async (req, res, next) => {
     }
 
     try {
+        const normalizedAddress = validateAndNormalizeShippingAddress(shippingAddress);
+        if (normalizedAddress.error) {
+            return res.status(400).json({ message: normalizedAddress.error });
+        }
+
         if (paymentMethod && paymentMethod.toLowerCase() === 'vnpay') {
             getVNPaySettings();
         }
@@ -308,7 +357,7 @@ export const addOrderItems = async (req, res, next) => {
         const order = new Order({
             orderItems,
             user: req.user._id,
-            shippingAddress,
+            shippingAddress: normalizedAddress.value,
             paymentMethod,
             itemsPrice,
             shippingPrice,

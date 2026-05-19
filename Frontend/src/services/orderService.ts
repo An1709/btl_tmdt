@@ -10,9 +10,15 @@ export interface CreateOrderPayload {
         image: string;
     }[];
     shippingAddress: {
+        fullName: string;
+        phone: string;
+        province: string;
+        district: string;
+        ward: string;
+        streetAddress: string;
+        fullAddress: string;
         address: string;
         city: string;
-        phone: string;
     };
     paymentMethod: PaymentMethod;
     itemsPrice: number;

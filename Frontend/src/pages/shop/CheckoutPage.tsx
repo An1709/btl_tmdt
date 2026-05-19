@@ -4,8 +4,18 @@ import { useCartStore } from "@/stores/useCartStore";
 import { orderService } from "@/services/orderService";
 import { couponService } from "@/services/couponService";
 import { formatCurrency } from "@/utils/format";
+import { isValidVietnamMobilePhone, normalizeVietnamPhone } from "@/utils/vietnamPhone";
 import { toast } from "sonner";
 import type { PaymentMethod } from "@/types/order";
+import VietnamAddressSelector, { type AddressSelection } from "@/components/checkout/VietnamAddressSelector";
+
+interface CheckoutAddress extends AddressSelection {
+    fullName: string;
+    phone: string;
+    streetAddress: string;
+}
+
+type AddressErrors = Partial<Record<keyof CheckoutAddress, string>>;
 
 const CheckoutPage = () => {
     const navigate = useNavigate();
@@ -16,13 +26,15 @@ const CheckoutPage = () => {
     const [discount, setDiscount] = useState(0);
     const [couponId, setCouponId] = useState<string | undefined>(undefined);
     const [checkingCoupon, setCheckingCoupon] = useState(false);
-    const [address, setAddress] = useState({
+    const [address, setAddress] = useState<CheckoutAddress>({
         fullName: "",
         phone: "",
-        address: "",
-        city: "",
+        streetAddress: "",
+        province: "",
         district: "",
+        ward: "",
     });
+    const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
 
     const subtotal = totalPrice();
     const shippingFee = subtotal >= 500000 ? 0 : 30000;
@@ -45,9 +57,36 @@ const CheckoutPage = () => {
         }
     };
 
+    const updateAddress = <K extends keyof CheckoutAddress>(key: K, value: CheckoutAddress[K]) => {
+        setAddress((current) => ({ ...current, [key]: value }));
+        setAddressErrors((current) => ({ ...current, [key]: undefined }));
+    };
+
+    const validateAddress = () => {
+        const errors: AddressErrors = {};
+        const normalizedPhone = normalizeVietnamPhone(address.phone);
+
+        if (!address.fullName.trim()) errors.fullName = "Vui lòng nhập họ và tên.";
+        if (!address.phone.trim()) {
+            errors.phone = "Vui lòng nhập số điện thoại.";
+        } else if (!/^\d+$/.test(normalizedPhone)) {
+            errors.phone = "Số điện thoại không hợp lệ.";
+        } else if (!isValidVietnamMobilePhone(address.phone)) {
+            errors.phone = "Số điện thoại phải là số di động Việt Nam hợp lệ.";
+        }
+        if (!address.province) errors.province = "Vui lòng chọn Tỉnh/Thành phố.";
+        if (!address.district) errors.district = "Vui lòng chọn Quận/Huyện.";
+        if (!address.ward) errors.ward = "Vui lòng chọn Phường/Xã.";
+        if (!address.streetAddress.trim()) errors.streetAddress = "Vui lòng nhập địa chỉ cụ thể.";
+
+        setAddressErrors(errors);
+        return { isValid: Object.keys(errors).length === 0, normalizedPhone };
+    };
+
     const handleOrder = async () => {
-        if (!address.fullName || !address.phone || !address.address || !address.city) {
-            toast.error("Vui lòng điền đầy đủ thông tin giao hàng.");
+        const { isValid, normalizedPhone } = validateAddress();
+        if (!isValid) {
+            toast.error("Vui lòng kiểm tra lại thông tin giao hàng.");
             return;
         }
         if (items.length === 0) {
@@ -56,6 +95,9 @@ const CheckoutPage = () => {
         }
         setLoading(true);
         try {
+            const streetAddress = address.streetAddress.trim();
+            const fullAddress = [streetAddress, address.ward, address.district, address.province].join(", ");
+
             const order = await orderService.createOrder({
                 orderItems: items.map((i) => ({
                     product: i.product.id,
@@ -65,9 +107,15 @@ const CheckoutPage = () => {
                     image: i.product.image,
                 })),
                 shippingAddress: {
-                    address: address.address,
-                    city: address.city,
-                    phone: address.phone,
+                    fullName: address.fullName.trim(),
+                    phone: normalizedPhone,
+                    province: address.province,
+                    district: address.district,
+                    ward: address.ward,
+                    streetAddress,
+                    fullAddress,
+                    address: streetAddress,
+                    city: address.province,
                 },
                 paymentMethod,
                 itemsPrice: subtotal,
@@ -97,7 +145,9 @@ const CheckoutPage = () => {
         }
     };
 
-    const inputCls = "w-full px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground";
+    const inputCls = "w-full px-4 py-3 rounded-xl border bg-muted/30 text-sm focus:outline-none focus:ring-2 transition-all placeholder:text-muted-foreground";
+    const getInputCls = (field: keyof CheckoutAddress) =>
+        `${inputCls} ${addressErrors[field] ? "border-red-400 focus:ring-red-400/30" : "border-border focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)]"}`;
 
     return (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -110,11 +160,46 @@ const CheckoutPage = () => {
                     <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
                         <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>📦 Địa chỉ giao hàng</h2>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <input className={inputCls} placeholder="Họ và tên" value={address.fullName} onChange={(e) => setAddress((a) => ({ ...a, fullName: e.target.value }))} />
-                            <input className={inputCls} placeholder="Số điện thoại" value={address.phone} onChange={(e) => setAddress((a) => ({ ...a, phone: e.target.value }))} />
-                            <input className={`${inputCls} sm:col-span-2`} placeholder="Địa chỉ cụ thể" value={address.address} onChange={(e) => setAddress((a) => ({ ...a, address: e.target.value }))} />
-                            <input className={inputCls} placeholder="Quận/Huyện" value={address.district} onChange={(e) => setAddress((a) => ({ ...a, district: e.target.value }))} />
-                            <input className={inputCls} placeholder="Thành phố/Tỉnh" value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} />
+                            <label className="flex flex-col gap-1">
+                                <input
+                                    className={getInputCls("fullName")}
+                                    placeholder="Họ và tên"
+                                    value={address.fullName}
+                                    onChange={(e) => updateAddress("fullName", e.target.value)}
+                                />
+                                {addressErrors.fullName && <span className="text-xs text-red-500">{addressErrors.fullName}</span>}
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <input
+                                    className={getInputCls("phone")}
+                                    placeholder="Số điện thoại"
+                                    value={address.phone}
+                                    onChange={(e) => updateAddress("phone", e.target.value)}
+                                />
+                                {addressErrors.phone && <span className="text-xs text-red-500">{addressErrors.phone}</span>}
+                            </label>
+                            <VietnamAddressSelector
+                                value={address}
+                                onChange={(selection) => {
+                                    setAddress((current) => ({ ...current, ...selection }));
+                                    setAddressErrors((current) => ({
+                                        ...current,
+                                        province: undefined,
+                                        district: undefined,
+                                        ward: undefined,
+                                    }));
+                                }}
+                                error={addressErrors.province || addressErrors.district || addressErrors.ward}
+                            />
+                            <label className="flex flex-col gap-1 sm:col-span-2">
+                                <input
+                                    className={getInputCls("streetAddress")}
+                                    placeholder="Địa chỉ cụ thể, ví dụ: Số 12 ngõ 34 đường Nguyễn Trãi"
+                                    value={address.streetAddress}
+                                    onChange={(e) => updateAddress("streetAddress", e.target.value)}
+                                />
+                                {addressErrors.streetAddress && <span className="text-xs text-red-500">{addressErrors.streetAddress}</span>}
+                            </label>
                         </div>
                     </div>
 
@@ -138,7 +223,7 @@ const CheckoutPage = () => {
                     <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
                         <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>🎟️ Mã giảm giá</h2>
                         <div className="flex gap-2">
-                            <input className={`${inputCls} flex-1`} placeholder="Nhập mã giảm giá" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} />
+                            <input className={`${inputCls} border-border focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] flex-1`} placeholder="Nhập mã giảm giá" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} />
                             <button onClick={handleApplyCoupon} disabled={checkingCoupon} className="btn-pet-secondary shrink-0 disabled:opacity-50">
                                 {checkingCoupon ? "..." : "Áp dụng"}
                             </button>

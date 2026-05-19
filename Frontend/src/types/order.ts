@@ -18,11 +18,15 @@ export interface OrderStatusHistoryItem {
 }
 
 export interface ShippingAddress {
-    fullName?: string;  // stored by frontend only, not in backend model
+    fullName?: string;
     address: string;
     city: string;
     phone: string;
-    district?: string;  // frontend extra field
+    district?: string;
+    province?: string;
+    ward?: string;
+    streetAddress?: string;
+    fullAddress?: string;
 }
 
 export interface Order {

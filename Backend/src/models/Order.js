@@ -18,8 +18,14 @@ const orderSchema = new mongoose.Schema({
         image: { type: String }
     }],
     shippingAddress: {
+        fullName: { type: String, trim: true },
         address: { type: String, required: true },
         city: { type: String, required: true },
+        province: { type: String, trim: true },
+        district: { type: String, trim: true },
+        ward: { type: String, trim: true },
+        streetAddress: { type: String, trim: true },
+        fullAddress: { type: String, trim: true },
         phone: { type: String, required: true }
     },
     paymentMethod: { type: String, required: true },

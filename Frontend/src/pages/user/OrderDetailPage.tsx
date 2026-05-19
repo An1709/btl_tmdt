@@ -27,6 +27,19 @@ const getErrorMessage = (err: unknown, fallback: string) => {
     return fallback;
 };
 
+const getShippingAddressText = (order: Order) => {
+    const shippingAddress = order.shippingAddress;
+
+    if (shippingAddress?.fullAddress) return shippingAddress.fullAddress;
+
+    return [
+        shippingAddress?.streetAddress || shippingAddress?.address,
+        shippingAddress?.ward,
+        shippingAddress?.district,
+        shippingAddress?.province || shippingAddress?.city,
+    ].filter(Boolean).join(", ");
+};
+
 const OrderDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const [order, setOrder] = useState<Order | null>(null);
@@ -211,13 +224,7 @@ const OrderDetailPage = () => {
                                 <p className="text-sm text-foreground font-semibold">{order.shippingAddress.fullName}</p>
                             )}
                             <p className="text-sm text-muted-foreground">{order.shippingAddress?.phone}</p>
-                            <p className="text-sm text-muted-foreground">
-                                {[
-                                    order.shippingAddress?.address,
-                                    order.shippingAddress?.district,
-                                    order.shippingAddress?.city,
-                                ].filter(Boolean).join(", ")}
-                            </p>
+                            <p className="text-sm text-muted-foreground">{getShippingAddressText(order)}</p>
                         </div>
 
                         {/* Payment info */}

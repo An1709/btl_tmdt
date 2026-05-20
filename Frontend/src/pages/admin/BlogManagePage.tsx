@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import DataTable, { type Column } from "@/components/features/admin/DataTable";
 import { postService, type PostPayload } from "@/services/postService";
 import type { Post } from "@/types/post";
+import { IMAGE_ASSETS } from "@/utils/constants";
 import { toast } from "sonner";
 
 interface BlogFormState {
@@ -155,7 +156,7 @@ const BlogManagePage = () => {
             header: "Bài viết",
             render: (post) => (
                 <div className="flex items-center gap-3 min-w-64">
-                    <img src={post.coverImage || "/placeholder.png"} alt={post.title} className="w-12 h-12 rounded-xl object-cover border border-border" />
+                    <img src={post.coverImage || IMAGE_ASSETS.placeholder} alt={post.title} className="w-12 h-12 rounded-xl object-cover border border-border" />
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground line-clamp-1">{post.title}</p>
                         <p className="text-xs text-muted-foreground line-clamp-1">{post.slug}</p>

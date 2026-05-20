@@ -9,6 +9,7 @@ import { Label } from "../ui/label";
 import { useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useState } from "react";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 const signUpSchema = z.object({
   firstname: z.string().min(1, "Tên bắt buộc phải có"),
@@ -62,7 +63,7 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
             <div className="flex flex-col gap-6">
               <div className="flex flex-col items-center text-center gap-2">
                 <a href="/" className="mx-auto block w-fit text-center">
-                  <img src="/logo.svg" alt="logo" />
+                  <img src={IMAGE_ASSETS.logo} alt="logo" />
                 </a>
 
                 <h1 className="text-2xl font-bold">Tạo tài khoản</h1>
@@ -149,7 +150,7 @@ export function SignupForm({ className, ...props }: React.ComponentProps<"div">)
           </form>
           <div className="bg-muted relative hidden md:block">
             <img
-              src="/placeholderSignUp.png"
+              src={IMAGE_ASSETS.placeholderSignUp}
               alt="Image"
               className="absolute top-1/2 -translate-y-1/2 object-cover"
             />

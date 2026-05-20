@@ -4,6 +4,7 @@ import { categoryService, type DbCategory } from "@/services/categoryService";
 import type { Product } from "@/types/product";
 import DataTable, { type Column } from "@/components/features/admin/DataTable";
 import { formatCurrency } from "@/utils/format";
+import { IMAGE_ASSETS } from "@/utils/constants";
 import { toast } from "sonner";
 
 interface ProductFormState {
@@ -177,7 +178,7 @@ const ProductManagePage = () => {
         {
             key: "product", header: "Sản phẩm", render: (p) => (
                 <div className="flex items-center gap-3">
-                    <img src={p.image || "/placeholder.png"} alt={p.name} className="w-10 h-10 rounded-xl object-cover border border-border" />
+                    <img src={p.image || IMAGE_ASSETS.placeholder} alt={p.name} className="w-10 h-10 rounded-xl object-cover border border-border" />
                     <div>
                         <p className="text-sm font-semibold text-foreground line-clamp-1">{p.name}</p>
                         <p className="text-xs text-muted-foreground">{p.breed}</p>

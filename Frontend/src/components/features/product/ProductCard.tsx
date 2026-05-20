@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
 import { collectionService } from "@/services/collectionService";
 import { calculateDiscountPercent } from "@/utils/format";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 interface ProductCardProps {
     product: Product;
@@ -47,6 +48,7 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
     const detailPath = `/product/${product.id}`;
     const discount = calculateDiscountPercent(product.price, product.originalPrice);
     const hasDiscount = discount >= 1;
+    const productImage = product.image || IMAGE_ASSETS.placeholder;
     const [added, setAdded] = useState(false);
     const [wishlisted, setWishlisted] = useState(false);
     const [updatingWishlist, setUpdatingWishlist] = useState(false);
@@ -125,8 +127,11 @@ const ProductCard = ({ product, onWishlistChange }: ProductCardProps) => {
             <div className="relative overflow-hidden aspect-square bg-muted/30">
                 <Link to={detailPath} aria-label={`Xem chi tiết ${product.name}`} className="block w-full h-full cursor-pointer">
                     <img
-                        src={product.image}
+                        src={productImage}
                         alt={product.name}
+                        onError={(event) => {
+                            event.currentTarget.src = IMAGE_ASSETS.placeholder;
+                        }}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading="lazy"
                     />

@@ -77,8 +77,6 @@ export const updateUserProfile = async (req, res) => {
         if (payload.phone !== undefined) user.phone = payload.phone;
         if (payload.address !== undefined) user.address = payload.address;
         if (payload.bio !== undefined) user.bio = payload.bio;
-        if (payload.avatarUrl !== undefined) user.avatarUrl = payload.avatarUrl || user.avatarUrl;
-
         const updatedUser = await user.save();
         return res.status(200).json(sanitizeUser(updatedUser));
     } catch (error) {
@@ -96,7 +94,9 @@ export const updateUserAvatar = async (req, res) => {
         const user = await User.findById(req.user._id);
         if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
 
-        const avatarUrl = await uploadImage(req.file, 'petmart/avatars');
+        const avatarUrl = await uploadImage(req.file, 'petmart/avatars', {
+            publicId: `avatar_${user._id}_${Date.now()}`,
+        });
         user.avatarUrl = avatarUrl.startsWith('/uploads/')
             ? `${req.protocol}://${req.get('host')}${avatarUrl}`
             : avatarUrl;
@@ -108,9 +108,9 @@ export const updateUserAvatar = async (req, res) => {
             data: sanitizeUser(updatedUser),
         });
     } catch (error) {
-        console.error('Error in updateUserAvatar:', error);
+        console.error('Error in updateUserAvatar:', error.message);
         if (error.message === 'CLOUDINARY_CONFIG_MISSING') {
-            return res.status(500).json({ message: 'Thiếu cấu hình Cloudinary. Vui lòng kiểm tra CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY và CLOUDINARY_API_SECRET.' });
+            return res.status(500).json({ message: 'Chưa cấu hình Cloudinary để tải ảnh đại diện.' });
         }
 
         return res.status(500).json({ message: 'Không thể cập nhật ảnh đại diện. Vui lòng thử lại.' });

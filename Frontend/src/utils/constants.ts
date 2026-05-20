@@ -1,6 +1,12 @@
 export const PAGE_SIZE = 12;
 export const API_URL = import.meta.env.VITE_API_URL;
 
+export const IMAGE_ASSETS = {
+    logo: "https://res.cloudinary.com/dvijnss6y/image/upload/v1779287171/logo_q9v0ln.svg",
+    placeholder: "https://res.cloudinary.com/dvijnss6y/image/upload/v1779287172/placeholder_jwspfn.png",
+    placeholderSignUp: "https://res.cloudinary.com/dvijnss6y/image/upload/v1779287172/placeholderSignUp_ufpsxz.png",
+} as const;
+
 export const ROUTES = {
     HOME: "/",
     SHOP: "/shop",

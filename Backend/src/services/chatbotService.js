@@ -78,6 +78,8 @@ const PET_CATEGORY_TERMS = {
     accessory: ['phu kien', 'accessory', 'accessories'],
 };
 
+const PET_SPECIES = ['dog', 'cat', 'rabbit', 'hamster', 'parrot', 'fish'];
+
 const DOG_BREED_TERMS = [
     'american bulldog', 'american pit bull terrier', 'basset hound', 'beagle',
     'boxer', 'chihuahua', 'cocker spaniel', 'english setter', 'german shorthaired',
@@ -94,14 +96,27 @@ const CAT_BREED_TERMS = [
 ];
 
 const PRODUCT_TYPE_TERMS = [
-    'thuc an', 'food', 'hat', 'pate', 'do choi', 'toy', 'phu kien',
-    'chuong', 'long', 'vong co', 'day dat', 'cat ve sinh', 'sua tam',
-    'cham soc', 've sinh',
+    'phu kien', 'accessory', 'accessories', 'thuc an', 'food', 'do an',
+    'hat', 'pate', 'sup thuong', 'snack', 'banh thuong', 'do choi', 'toy', 'banh xe',
+    'chuong', 'long nuoi', 'long chim', 'long vet', 'vong co', 'day dat', 'leash', 'collar', 'ao',
+    'quan ao', 'cat ve sinh', 'khay ve sinh', 'bat an', 'sua tam', 'luoc',
+    'thuoc', 'vitamin', 'dinh duong', 'cham soc', 've sinh', 'chat don', 'dem', 'o ngu',
+    'o meo', 'nha', 'binh nuoc', 'balo', 'may cho an', 'tham ve sinh', 'be ca',
+    'may loc', 'loc nuoc', 'den led', 'den suoi', 'phan nen', 'thuy sinh', 'can dien tu',
+];
+
+const RAW_ACCESSORY_TERMS = [
+    'phụ kiện', 'đồ chơi', 'thức ăn', 'hạt', 'pate', 'súp thưởng',
+    'chuồng', 'lồng', 'dây dắt', 'vòng cổ', 'áo', 'quần áo',
+    'cát vệ sinh', 'khay vệ sinh', 'bát ăn', 'sữa tắm', 'lược',
+    'thuốc', 'vitamin', 'đệm', 'ổ', 'nhà', 'bình nước',
 ];
 
 const hasProductTypeIntent = (message) => {
     const normalizedMessage = normalizeText(message);
-    return PRODUCT_TYPE_TERMS.some((term) => normalizedMessage.includes(term));
+    const rawMessage = String(message || '').toLowerCase();
+    return PRODUCT_TYPE_TERMS.some((term) => normalizedMessage.includes(term))
+        || RAW_ACCESSORY_TERMS.some((term) => rawMessage.includes(term));
 };
 
 export const validateChatMessage = (message) => {
@@ -125,6 +140,9 @@ const normalizeText = (value = '') =>
 
 const hasAnyKeyword = (normalizedMessage, keywords) =>
     keywords.some((keyword) => normalizedMessage.includes(keyword));
+
+const hasTerm = (text, term) =>
+    new RegExp(`\\b${escapeRegex(term)}\\b`).test(text);
 
 const hasDogPurchaseContext = (normalizedMessage) =>
     /\b(can|muon|tim|mua|goi y|tu van|san pham|do|thuc an|phu kien)\b.*\bcho\b/.test(normalizedMessage)
@@ -201,6 +219,8 @@ const detectIntent = (message) => {
     intent.product = intent.product
         || /\b(chó|mèo|thỏ|vẹt|chim|cá|hamster)\b/i.test(message)
         || /\b(cho\s+cho|meo|tho|vet|chim|ca|hamster|dog|cat|rabbit|bird|parrot|fish|aquarium)\b/.test(normalizedMessage)
+        || DOG_BREED_TERMS.some((breed) => normalizedMessage.includes(breed))
+        || CAT_BREED_TERMS.some((breed) => normalizedMessage.includes(breed))
         || hasDogPurchaseContext(normalizedMessage)
         || priceIntent.hasPriceIntent;
 
@@ -256,6 +276,53 @@ const getPetSpecies = (message) => {
     if (/\b(cá|fish|aquarium)\b/i.test(message) || /\b(ca|fish|aquarium|thuy sinh)\b/.test(normalizedMessage)) return 'fish';
     if (/\b(phụ kiện|accessory|accessories)\b/i.test(message) || /\b(phu kien|accessory|accessories)\b/.test(normalizedMessage)) return 'accessory';
     return '';
+};
+
+const hasAccessoryIntent = (message) => {
+    const normalizedMessage = normalizeText(message);
+    const rawMessage = String(message || '').toLowerCase();
+    return PRODUCT_TYPE_TERMS.some((term) => hasTerm(normalizedMessage, term))
+        || RAW_ACCESSORY_TERMS.some((term) => rawMessage.includes(term));
+};
+
+const hasBreedIntent = (message) => {
+    const normalizedMessage = normalizeText(message);
+    return DOG_BREED_TERMS.some((breed) => normalizedMessage.includes(breed))
+        || CAT_BREED_TERMS.some((breed) => normalizedMessage.includes(breed));
+};
+
+const getRequestedBreedTerms = (message) => {
+    const normalizedMessage = normalizeText(message);
+    return [...DOG_BREED_TERMS, ...CAT_BREED_TERMS]
+        .filter((breed) => normalizedMessage.includes(breed));
+};
+
+const productMatchesBreed = (product, breedTerms) => {
+    if (!breedTerms.length) return true;
+    const searchText = getProductSearchText(product);
+    return breedTerms.some((breed) => searchText.includes(breed));
+};
+
+const getSpeciesTermsPattern = () =>
+    PET_SPECIES.flatMap((species) => PET_CATEGORY_TERMS[species] || [])
+        .map(escapeRegex)
+        .join('|');
+
+// Product intent must be decided before ranking, otherwise cheap accessories
+// with species words can outrank actual pet listings for "mua chó/mèo".
+const detectChatbotProductIntent = (message) => {
+    if (hasAccessoryIntent(message)) return 'ACCESSORY_PURCHASE';
+
+    const normalizedMessage = normalizeText(message).replace(/\s+/g, ' ');
+    const species = getPetSpecies(message);
+    const speciesTerms = getSpeciesTermsPattern();
+    const petRequestPattern = new RegExp(`\\b(mua|can mua|tim mua|ban|co)\\s+(${speciesTerms})\\b`);
+
+    if (hasBreedIntent(message) || (species && species !== 'accessory' && petRequestPattern.test(normalizedMessage))) {
+        return 'PET_PURCHASE';
+    }
+
+    return 'AMBIGUOUS';
 };
 
 const extractProductKeywords = (message, intent) => {
@@ -405,6 +472,70 @@ const getProductSearchText = (product) => normalizeText([
     formatSpecifications(product.specifications),
 ].filter(Boolean).join(' '));
 
+const hasAccessoryTerms = (text) =>
+    PRODUCT_TYPE_TERMS.some((term) => hasTerm(text, term));
+
+const hasAnimalListingSignal = (text) =>
+    DOG_BREED_TERMS.some((breed) => text.includes(breed))
+    || CAT_BREED_TERMS.some((breed) => text.includes(breed))
+    || /\b(meo|cat|kitten|tho|rabbit|hamster|vet|parrot|ca|fish)\b/.test(text)
+    || /\b(chuot hamster|hamster\s+(abino|bo sua|tra sua|campell|syrian|dwarf))\b/.test(text)
+    || /\bcho\s+(pug|shiba|beagle|poodle|corgi|husky|samoyed|pomeranian|chihuahua|con|canh)\b/.test(text);
+
+const getCategoryType = (category) => {
+    const categoryName = normalizeText(getCategoryName(category));
+    const categorySlug = normalizeText(getCategorySlug(category));
+    const categoryText = `${categoryName} ${categorySlug}`.trim();
+
+    if (hasTerm(categoryText, 'phu kien') || hasTerm(categoryText, 'accessory') || hasTerm(categoryText, 'accessories')) {
+        return 'accessory';
+    }
+
+    if (PET_SPECIES.some((species) =>
+        categorySlug === species
+        || (PET_CATEGORY_TERMS[species] || []).some((term) => hasTerm(categoryText, term))
+    )) {
+        return 'pet';
+    }
+
+    return '';
+};
+
+const classifyProductType = (product) => {
+    const categoryType = getCategoryType(product.category);
+    const productName = normalizeText(product.name);
+    const productText = normalizeText([
+        product.name,
+        product.description,
+        formatSpecifications(product.specifications),
+    ].filter(Boolean).join(' '));
+    const productHasAccessoryTerms = hasAccessoryTerms(productText);
+
+    if (!hasAccessoryTerms(productName) && hasAnimalListingSignal(productName)) {
+        return 'pet';
+    }
+
+    if (!productHasAccessoryTerms && hasAnimalListingSignal(productText)) {
+        return 'pet';
+    }
+
+    if (categoryType === 'accessory' || productHasAccessoryTerms) {
+        return 'accessory';
+    }
+
+    if (categoryType === 'pet') {
+        return 'pet';
+    }
+
+    return 'unknown';
+};
+
+const productMatchesRecommendationIntent = (product, recommendationIntent) => {
+    if (recommendationIntent === 'PET_PURCHASE') return classifyProductType(product) === 'pet';
+    if (recommendationIntent === 'ACCESSORY_PURCHASE') return classifyProductType(product) === 'accessory';
+    return true;
+};
+
 const productMatchesSpecies = (product, species) => {
     if (!species) return true;
     const productName = normalizeText(product.name);
@@ -434,8 +565,8 @@ const productMatchesSpecies = (product, species) => {
     return terms.some((term) => {
         if (species === 'dog' && term === 'cho') {
             return /\b(cho|cun)\b/.test(categoryText)
-                || /\b(thuc an|hat|pate|snack|do choi|vong co|day dat|ao|sua tam|cham soc|phu kien)\s+(cho|cun)\b/.test(searchableText)
-                || /\b(cho|cun)\s+(con|lon|nho|to|truong thanh)\b/.test(searchableText);
+                || /\b(dog|puppy|cun)\b/.test(searchableText)
+                || /\b(thuc an|hat|pate|snack|do choi|vong co|day dat|ao|sua tam|cham soc|phu kien)\b.*\bcho\s+(cho|cun)\b/.test(searchableText);
         }
 
         return new RegExp(`\\b${escapeRegex(term)}\\b`).test(searchableText);
@@ -664,9 +795,13 @@ const findPersonalizedProducts = async (user) => {
 const findRelevantProducts = async (message, intent) => {
     try {
         const keywords = extractProductKeywords(message, intent);
-        const petSpecies = getPetSpecies(message);
+        const recommendationIntent = detectChatbotProductIntent(message);
+        const detectedSpecies = getPetSpecies(message);
+        const petSpecies = detectedSpecies === 'accessory' ? '' : detectedSpecies;
         const priceIntent = parsePriceIntent(message);
         const hasSpecificTypeIntent = hasProductTypeIntent(message);
+        const breedTerms = getRequestedBreedTerms(message);
+        const hasSpecificBreedIntent = breedTerms.length > 0;
         const strictCategoryMode = Boolean(petSpecies);
         const filter = await buildProductFilter(message, intent, keywords);
         const products = await Product.find(filter)
@@ -675,11 +810,18 @@ const findRelevantProducts = async (message, intent) => {
             .sort({ stock: -1, averageRating: -1, sold: -1, createdAt: -1 })
             .limit(80)
             .lean();
+        const typeProducts = products.filter((product) =>
+            productMatchesRecommendationIntent(product, recommendationIntent),
+        );
         let speciesProducts = petSpecies
-            ? products.filter((product) => productMatchesSpecies(product, petSpecies))
-            : products;
+            ? typeProducts.filter((product) => productMatchesSpecies(product, petSpecies))
+            : typeProducts;
 
-        if (petSpecies && !speciesProducts.length && !hasSpecificTypeIntent) {
+        if (hasSpecificBreedIntent) {
+            speciesProducts = speciesProducts.filter((product) => productMatchesBreed(product, breedTerms));
+        }
+
+        if (petSpecies && !speciesProducts.length && !hasSpecificTypeIntent && !hasSpecificBreedIntent) {
             const baseFilters = buildBaseProductFilters(intent, priceIntent);
             const broaderFilter = baseFilters.length ? { $and: baseFilters } : {};
             const broaderProducts = await Product.find(broaderFilter)
@@ -689,15 +831,18 @@ const findRelevantProducts = async (message, intent) => {
                 .limit(120)
                 .lean();
 
-            speciesProducts = broaderProducts.filter((product) => productMatchesSpecies(product, petSpecies));
+            speciesProducts = broaderProducts
+                .filter((product) => productMatchesRecommendationIntent(product, recommendationIntent))
+                .filter((product) => productMatchesSpecies(product, petSpecies));
         }
 
         return {
-            products: sortProductsForSupport(petSpecies ? speciesProducts : products, keywords, priceIntent).slice(0, PRODUCT_LIMIT),
+            products: sortProductsForSupport(petSpecies ? speciesProducts : typeProducts, keywords, priceIntent).slice(0, PRODUCT_LIMIT),
             lookupFailed: false,
             strictCategoryMode,
             requestedSpecies: petSpecies,
             priceIntent,
+            recommendationIntent,
         };
     } catch {
         return {
@@ -790,8 +935,12 @@ const getProductReply = async (message, intent, user) => {
         return 'Mình chưa thể tải dữ liệu sản phẩm lúc này. Bạn có thể thử lại sau hoặc tìm trực tiếp trong trang Sản phẩm.';
     }
 
-    if (!productContext.products.length) {
+    if (!productContext.products.length && productContext.recommendationIntent !== 'PET_PURCHASE') {
         return 'Hiện tại mình chưa tìm thấy sản phẩm phù hợp.';
+    }
+
+    if (!productContext.products.length) {
+        return 'Hiện tại mình chưa tìm thấy thú cưng phù hợp.';
     }
 
     const prefix = intent.sale

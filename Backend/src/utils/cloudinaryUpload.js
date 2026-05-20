@@ -13,7 +13,7 @@ const bufferToDataUri = (file) => {
     return `data:${file.mimetype};base64,${base64}`;
 };
 
-export const uploadImage = async (file, folder = 'petmart') => {
+export const uploadImage = async (file, folder = 'petmart', options = {}) => {
     if (!file?.buffer) {
         throw new Error('INVALID_UPLOAD_FILE');
     }
@@ -23,6 +23,7 @@ export const uploadImage = async (file, folder = 'petmart') => {
         const result = await cloudinary.uploader.upload(bufferToDataUri(file), {
             folder,
             resource_type: 'image',
+            public_id: options.publicId,
         });
 
         return result.secure_url;

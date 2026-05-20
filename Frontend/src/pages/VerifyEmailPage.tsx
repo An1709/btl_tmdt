@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 const verifyEmailSchema = z.object({
   code: z.string().regex(/^\d{6}$/, "Mã OTP phải gồm 6 chữ số"),
@@ -155,7 +156,7 @@ const VerifyEmailPage = () => {
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col items-center text-center gap-2">
                   <Link to="/" className="mx-auto block w-fit text-center">
-                    <img src="/logo.svg" alt="logo" />
+                    <img src={IMAGE_ASSETS.logo} alt="logo" />
                   </Link>
 
                   <h1 className="text-2xl font-bold">Xác minh email</h1>
@@ -216,7 +217,7 @@ const VerifyEmailPage = () => {
 
             <div className="bg-muted relative hidden md:block">
               <img
-                src="/placeholderSignUp.png"
+                src={IMAGE_ASSETS.placeholderSignUp}
                 alt="Image"
                 className="absolute top-1/2 -translate-y-1/2 object-cover"
               />

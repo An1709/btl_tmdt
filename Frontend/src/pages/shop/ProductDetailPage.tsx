@@ -9,6 +9,7 @@ import ProductReviews from "@/components/features/product/ProductReviews";
 import ProductCard from "@/components/features/product/ProductCard";
 import { toast } from "sonner";
 import { collectionService } from "@/services/collectionService";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 // ── Detail page skeleton ──────────────────────────────────────────────────
 const DetailSkeleton = () => (
@@ -271,6 +272,7 @@ const ProductDetailPage = () => {
     const visibleComboProducts = comboProducts.filter((item) => item.id !== product.id);
     const selectedComboProducts = visibleComboProducts.filter((item) => selectedComboIds.has(item.id));
     const comboSubtotal = product.price * qty + selectedComboProducts.reduce((sum, item) => sum + item.price, 0);
+    const productImage = product.image || IMAGE_ASSETS.placeholder;
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -286,7 +288,14 @@ const ProductDetailPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12">
                 {/* Image */}
                 <div className="rounded-3xl overflow-hidden border border-border shadow-sm aspect-square">
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                    <img
+                        src={productImage}
+                        alt={product.name}
+                        onError={(event) => {
+                            event.currentTarget.src = IMAGE_ASSETS.placeholder;
+                        }}
+                        className="w-full h-full object-cover"
+                    />
                 </div>
 
                 {/* Info */}
@@ -413,7 +422,14 @@ const ProductDetailPage = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="flex items-center gap-3 p-3 rounded-2xl border border-[var(--pet-coral)]/30 bg-[var(--pet-coral)]/5">
                                 <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
-                                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                    <img
+                                        src={productImage}
+                                        alt={product.name}
+                                        onError={(event) => {
+                                            event.currentTarget.src = IMAGE_ASSETS.placeholder;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
                                 <div className="min-w-0">
                                     <p className="font-bold text-sm text-foreground line-clamp-2">{product.name}</p>
@@ -446,7 +462,14 @@ const ProductDetailPage = () => {
                                             {selected ? "✓" : ""}
                                         </span>
                                         <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
-                                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                            <img
+                                                src={item.image || IMAGE_ASSETS.placeholder}
+                                                alt={item.name}
+                                                onError={(event) => {
+                                                    event.currentTarget.src = IMAGE_ASSETS.placeholder;
+                                                }}
+                                                className="w-full h-full object-cover"
+                                            />
                                         </div>
                                         <div className="min-w-0">
                                             <p className="font-bold text-sm text-foreground line-clamp-2">{item.name}</p>

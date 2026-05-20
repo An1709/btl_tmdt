@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 const OTP_TTL_SECONDS = 90;
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -220,7 +221,7 @@ const ForgotPasswordPage = () => {
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col items-center text-center gap-2">
                   <Link to="/" className="mx-auto block w-fit text-center">
-                    <img src="/logo.svg" alt="logo" />
+                    <img src={IMAGE_ASSETS.logo} alt="logo" />
                   </Link>
 
                   <h1 className="text-2xl font-bold">Đặt lại mật khẩu</h1>
@@ -351,7 +352,7 @@ const ForgotPasswordPage = () => {
 
             <div className="bg-muted relative hidden md:block">
               <img
-                src="/placeholder.png"
+                src={IMAGE_ASSETS.placeholder}
                 alt="Image"
                 className="absolute top-1/2 -translate-y-1/2 object-cover"
               />

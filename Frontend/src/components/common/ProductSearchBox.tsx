@@ -4,6 +4,7 @@ import axios from "axios";
 import { productService, type ProductSuggestion } from "@/services/productService";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useDebounce } from "@/hooks/useDebounce";
+import { IMAGE_ASSETS } from "@/utils/constants";
 
 interface ProductSearchBoxProps {
     initialValue?: string;
@@ -19,7 +20,7 @@ interface ProductSearchBoxProps {
     onSearchComplete?: () => void;
 }
 
-const FALLBACK_IMAGE = "/placeholder.png";
+const FALLBACK_IMAGE = IMAGE_ASSETS.placeholder;
 
 const formatPrice = (price: number) => price.toLocaleString("vi-VN") + "đ";
 

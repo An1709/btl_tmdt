@@ -8,9 +8,6 @@ import UserAvatar from "@/components/common/UserAvatar";
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-const getErrorMessage = (error: unknown, fallback: string) =>
-    (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
-
 const MEMBERSHIP_NEXT_POINTS: Record<string, number | null> = {
     Đồng: 100,
     Bạc: 300,
@@ -69,7 +66,7 @@ const ProfilePage = () => {
 
         if (file.size > MAX_AVATAR_SIZE) {
             clearAvatarSelection();
-            toast.error("Tệp ảnh quá lớn.");
+            toast.error("Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 5MB.");
             return;
         }
 
@@ -96,8 +93,8 @@ const ProfilePage = () => {
             clearAvatarSelection();
             toast.success("Cập nhật ảnh đại diện thành công.");
             return updatedUser;
-        } catch (error) {
-            toast.error(getErrorMessage(error, "Không thể cập nhật ảnh đại diện. Vui lòng thử lại."));
+        } catch {
+            toast.error("Không thể cập nhật ảnh đại diện. Vui lòng thử lại.");
             return null;
         } finally {
             setUploadingAvatar(false);
@@ -207,7 +204,7 @@ const ProfilePage = () => {
                                 disabled={!selectedAvatar || uploadingAvatar || saving}
                                 className="btn-pet-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {uploadingAvatar ? "Đang cập nhật..." : "Cập nhật ảnh đại diện"}
+                                {uploadingAvatar ? "Đang tải ảnh đại diện..." : "Cập nhật ảnh đại diện"}
                             </button>
                         </div>
                     </div>

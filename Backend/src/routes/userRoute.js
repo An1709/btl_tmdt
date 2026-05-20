@@ -25,10 +25,10 @@ const uploadAvatar = (req, res, next) => {
         if (!error) return next();
 
         if (error.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ message: 'Tệp ảnh quá lớn.' });
+            return res.status(400).json({ message: 'Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 5MB.' });
         }
 
-        return res.status(400).json({ message: error.message || 'Vui lòng chọn tệp ảnh hợp lệ.' });
+        return res.status(400).json({ message: 'Vui lòng chọn tệp ảnh hợp lệ.' });
     });
 };
 

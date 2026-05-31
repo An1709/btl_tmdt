@@ -129,8 +129,7 @@ const issueVerificationCode = async (user) => {
     try {
         await sendVerificationEmail(user, code);
     } catch (error) {
-        verificationCode.consumedAt = new Date();
-        await verificationCode.save();
+        await VerificationCode.deleteOne({ _id: verificationCode._id });
         throw error;
     }
 };

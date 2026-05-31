@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-const EMAIL_TIMEOUT_MS = 30000;
+const EMAIL_TIMEOUT_MS = 60000;
 
 export class EmailDeliveryError extends Error {
     constructor(code, message, statusCode = 503, cause = null) {
@@ -110,6 +110,8 @@ const logOriginalEmailError = (error) => {
 const getSafeEmailError = (error) => {
     if (error instanceof EmailDeliveryError) return error;
 
+    const errorMessage = String(error?.message || '').toLowerCase();
+
     if (error?.code === 'EAUTH' || error?.responseCode === 535 || error?.responseCode === 534) {
         return new EmailDeliveryError(
             'EMAIL_AUTH_FAILED',
@@ -127,6 +129,8 @@ const getSafeEmailError = (error) => {
         || error?.code === 'ENETUNREACH'
         || error?.code === 'ECONNREFUSED'
         || error?.command === 'CONN'
+        || errorMessage.includes('connection timeout')
+        || errorMessage.includes('enetunreach')
     ) {
         return new EmailDeliveryError(
             'EMAIL_CONNECTION_FAILED',

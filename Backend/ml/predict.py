@@ -116,12 +116,19 @@ def predict(image_path: Path, model_path: Path, labels_path: Path) -> dict[str, 
 
     try:
         import tensorflow as tf
-    except ImportError:
+    except ImportError as error:
+        dependency_name = getattr(error, "name", None) or "tensorflow"
+        print(f"Pet Vision dependency import failed: {dependency_name}: {error}", file=sys.stderr)
         return {"success": False, "message": "TENSORFLOW_NOT_INSTALLED"}
 
     labels = load_labels(labels_path)
     model = tf.keras.models.load_model(model_path)
-    batch = preprocess_image(image_path)
+    try:
+        batch = preprocess_image(image_path)
+    except ImportError as error:
+        dependency_name = getattr(error, "name", None) or "python_dependency"
+        print(f"Pet Vision dependency import failed: {dependency_name}: {error}", file=sys.stderr)
+        return {"success": False, "message": "DEPENDENCY_IMPORT_FAILED"}
     probabilities = model.predict(batch, verbose=0)[0]
 
     top_indices = probabilities.argsort()[-3:][::-1]

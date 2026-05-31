@@ -3,10 +3,13 @@ import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 import { predictPet } from '../controllers/petVisionController.js';
+import { getPetVisionRuntimeConfig, logPetVisionRuntimeDiagnosticsOnce } from '../services/petVisionRuntime.js';
 
 const router = express.Router();
 
-const uploadDir = process.env.PET_VISION_UPLOAD_DIR || 'uploads/pet-vision/tmp';
+logPetVisionRuntimeDiagnosticsOnce();
+
+const uploadDir = getPetVisionRuntimeConfig().uploadDir;
 const allowedExtension = /\.(jpe?g|png|webp)$/i;
 const allowedMimeType = /^image\/(jpe?g|png|webp)$/i;
 

@@ -4,15 +4,29 @@ import {
     getSuggestedProductsForSpecies,
     runPetVisionInference,
 } from '../services/petVisionService.js';
+import { PetVisionUnavailableError } from '../services/petVisionRuntime.js';
 
 const getPredictionErrorMessage = (error) => {
     const code = error?.code || error?.message;
+
+    if (error instanceof PetVisionUnavailableError) {
+        return {
+            status: error.statusCode || 503,
+            code,
+            message: code === 'PET_VISION_DISABLED'
+                ? 'Tính năng nhận diện thú cưng đang tạm tắt.'
+                : 'Mô hình nhận diện chưa sẵn sàng. Vui lòng kiểm tra cấu hình Pet Vision.',
+            details: error.details,
+        };
+    }
 
     if (
         code === 'MODEL_NOT_FOUND'
         || code === 'LABELS_NOT_FOUND'
         || code === 'INVALID_LABELS'
         || code === 'TENSORFLOW_NOT_INSTALLED'
+        || code === 'PYTHON_UNAVAILABLE'
+        || code === 'DEPENDENCY_IMPORT_FAILED'
     ) {
         return {
             status: 503,
@@ -40,13 +54,6 @@ const normalizeApiPrediction = (prediction, confidenceThreshold) => {
 };
 
 export const predictPet = async (req, res) => {
-    if (process.env.PET_VISION_ENABLED === 'false') {
-        return res.status(503).json({
-            success: false,
-            message: 'Tính năng nhận diện thú cưng đang tạm tắt.',
-        });
-    }
-
     const uploadedPath = req.file?.path;
 
     if (!uploadedPath) {
@@ -74,12 +81,17 @@ export const predictPet = async (req, res) => {
             suggestedProducts,
         });
     } catch (error) {
-        console.error('[PetVision] Prediction failed:', error?.message || error);
+        console.error('[PetVision] Prediction failed:', {
+            code: error?.code,
+            message: error?.message,
+            details: error?.details,
+        });
         const response = getPredictionErrorMessage(error);
         return res.status(response.status).json({
             success: false,
             code: response.code,
             message: response.message,
+            details: response.details,
         });
     } finally {
         await cleanupPetVisionImage(uploadedPath);

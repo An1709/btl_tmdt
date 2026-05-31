@@ -1,17 +1,16 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
+import {
+    backendRoot,
+    ensurePetVisionPythonAvailable,
+    ensurePetVisionReady,
+} from './petVisionRuntime.js';
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_LIMIT = 3;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.resolve(__dirname, '..', '..');
-const defaultModelPath = path.resolve(backendRoot, 'ml', 'models', 'pet_breed_model.keras');
-const defaultLabelsPath = path.resolve(backendRoot, 'ml', 'labels.json');
 
 const SPECIES_MATCHERS = {
     Chó: {
@@ -110,11 +109,6 @@ const normalizePredictionItem = (item) => ({
     confidence: Number(item.confidence) || 0,
 });
 
-const resolveMlPath = (value, fallback) => {
-    if (!value) return fallback;
-    return path.isAbsolute(value) ? value : path.resolve(backendRoot, value.replace(/^Backend[\\/]/, ''));
-};
-
 const validatePredictionPayload = (payload) => {
     if (!payload?.success) {
         const error = new Error(payload?.message || 'INFERENCE_FAILED');
@@ -140,12 +134,13 @@ const validatePredictionPayload = (payload) => {
     };
 };
 
-export const runPetVisionInference = (imagePath) => {
-    const pythonBin = process.env.PET_VISION_PYTHON_BIN || 'python';
+export const runPetVisionInference = async (imagePath) => {
+    const readiness = ensurePetVisionReady();
+    await ensurePetVisionPythonAvailable();
+
+    const pythonBin = readiness.pythonBin;
     const scriptPath = path.resolve(backendRoot, 'ml', 'predict.py');
-    const modelPath = resolveMlPath(process.env.PET_VISION_MODEL_PATH, defaultModelPath);
-    const labelsPath = resolveMlPath(process.env.PET_VISION_LABELS_PATH, defaultLabelsPath);
-    const args = [scriptPath, '--image', imagePath, '--model', modelPath, '--labels', labelsPath];
+    const args = [scriptPath, '--image', imagePath, '--model', readiness.modelPath, '--labels', readiness.labelsPath];
 
     return new Promise((resolve, reject) => {
         const child = spawn(pythonBin, args, {
@@ -191,6 +186,9 @@ export const runPetVisionInference = (imagePath) => {
             }
 
             try {
+                if (stderr.trim()) {
+                    console.error('[PetVision] Inference diagnostics:', stderr.trim());
+                }
                 const payload = parseJsonOutput(stdout);
                 resolve(validatePredictionPayload(payload));
             } catch (error) {

@@ -1,15 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+    fileExistsSync,
+    getPetVisionRuntimeConfig,
+    logPetVisionPythonDiagnosticsOnce,
+    logPetVisionRuntimeDiagnosticsOnce,
+} from './petVisionRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendRoot = path.resolve(__dirname, '..', '..');
 const mlRoot = path.resolve(backendRoot, 'ml');
 const statusFilePath = path.resolve(mlRoot, 'model-status.json');
-const labelsFilePath = path.resolve(mlRoot, 'labels.json');
 const metricsFilePath = path.resolve(mlRoot, 'outputs', 'metrics.json');
-const modelFilePath = path.resolve(mlRoot, 'models', 'pet_breed_model.keras');
 const datasetTrainPath = path.resolve(mlRoot, 'dataset', 'train');
 
 const PREFIX_SPECIES = {
@@ -100,16 +104,8 @@ const readJson = async (filePath) => {
     return JSON.parse(raw);
 };
 
-const fileExists = async (filePath) => {
-    try {
-        await fs.access(filePath);
-        return true;
-    } catch {
-        return false;
-    }
-};
-
 export const getClassesFromLabels = async () => {
+    const labelsFilePath = getPetVisionRuntimeConfig().labelsPath;
     const data = await readJson(labelsFilePath);
     let classes = Array.isArray(data?.classes) ? data.classes : null;
 
@@ -174,6 +170,7 @@ const getMetrics = async () => {
 };
 
 export const getModelStatus = async () => {
+    const readiness = logPetVisionRuntimeDiagnosticsOnce();
     let status = defaultStatus;
     let statusReadError = null;
 
@@ -186,22 +183,40 @@ export const getModelStatus = async () => {
         }
     }
 
-    const modelExists = await fileExists(modelFilePath);
+    const modelExists = fileExistsSync(readiness.modelPath);
+    const pythonDiagnostics = await logPetVisionPythonDiagnosticsOnce();
     const metrics = await getMetrics();
     const { classes, source, metadataError } = await getClassInfo();
     const metadataCannotBeRead = Boolean(statusReadError && !metrics && classes.length === 0);
     const resolvedStatus = metadataCannotBeRead
         ? 'failed'
-        : modelExists
+        : readiness.ready && pythonDiagnostics.versionCheckSucceeded
             ? 'ready'
             : 'not_trained';
 
     return {
         ...status,
+        enabled: readiness.enabled,
         mode: modelExists ? 'trained' : 'not_trained',
         status: resolvedStatus,
         dataset: 'Backend/ml/dataset',
         modelFile: modelExists ? 'pet_breed_model.keras' : null,
+        readiness: {
+            ready: readiness.ready,
+            code: readiness.unavailableReason?.code || null,
+            missingFileType: readiness.unavailableReason?.missingFileType || null,
+            resolvedPath: readiness.unavailableReason?.resolvedPath || null,
+            modelPath: readiness.modelPath,
+            modelExists: readiness.modelExists,
+            labelsPath: readiness.labelsPath,
+            labelsExists: readiness.labelsExists,
+            uploadDir: readiness.uploadDir,
+            uploadDirExists: readiness.uploadDirExists,
+            pythonBin: readiness.pythonBin,
+            pythonVersionCheckSucceeded: pythonDiagnostics.versionCheckSucceeded,
+            pythonVersionStdout: pythonDiagnostics.stdout,
+            pythonVersionStderr: pythonDiagnostics.stderr,
+        },
         classSource: source,
         classCount: classes.length || metrics?.classCount || Number(status.classCount) || 0,
         classes,

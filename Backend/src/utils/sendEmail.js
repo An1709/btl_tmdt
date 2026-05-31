@@ -19,17 +19,19 @@ const getTransportMode = () => (process.env.SMTP_HOST ? 'smtp' : 'service');
 const logEmailConfigPresenceOnce = () => {
     if (emailConfigPresenceLogged) return;
 
+    const transportMode = getTransportMode();
     emailConfigPresenceLogged = true;
     console.info('[Email:config]', {
-        transportMode: getTransportMode(),
+        transportMode,
+        emailServiceIgnored: transportMode === 'smtp',
+        providerHost: process.env.SMTP_HOST || undefined,
+        smtpPort: process.env.SMTP_PORT || undefined,
+        smtpSecure: process.env.SMTP_SECURE || undefined,
+        smtpFamily: process.env.SMTP_FAMILY || undefined,
         has_EMAIL_USERNAME: Boolean(process.env.EMAIL_USERNAME),
         has_EMAIL_PASSWORD: Boolean(process.env.EMAIL_PASSWORD),
         has_FROM_EMAIL: Boolean(process.env.FROM_EMAIL),
         has_FROM_NAME: Boolean(process.env.FROM_NAME),
-        SMTP_HOST: process.env.SMTP_HOST || undefined,
-        SMTP_PORT: process.env.SMTP_PORT || undefined,
-        SMTP_SECURE: process.env.SMTP_SECURE || undefined,
-        SMTP_FAMILY: process.env.SMTP_FAMILY || undefined,
     });
 };
 
@@ -39,8 +41,8 @@ const getRequiredEmailConfig = () => {
     const service = process.env.EMAIL_SERVICE || 'gmail';
     const username = process.env.EMAIL_USERNAME;
     const password = process.env.EMAIL_PASSWORD;
-    const fromEmail = process.env.FROM_EMAIL || username;
-    const fromName = process.env.FROM_NAME || 'PetShop Support';
+    const fromEmail = process.env.FROM_EMAIL;
+    const fromName = process.env.FROM_NAME || 'PetMart';
 
     if (!username || !password || !fromEmail) {
         throw new EmailDeliveryError(
@@ -142,7 +144,9 @@ const getSafeEmailError = (error) => {
 
     return new EmailDeliveryError(
         'EMAIL_SEND_FAILED',
-        'Khong the gui email luc nay. Vui long thu lai sau.',
+        errorMessage.includes('sender') || errorMessage.includes('from')
+            ? 'Email sender was rejected. Please check FROM_EMAIL is verified in the SMTP provider.'
+            : 'Khong the gui email luc nay. Vui long thu lai sau.',
         503,
         error,
     );
@@ -154,7 +158,7 @@ const sendEmail = async (options) => {
         const transporter = createTransporter(config);
 
         await transporter.sendMail({
-            from: `${config.fromName} <${config.fromEmail}>`,
+            from: `"${config.fromName}" <${config.fromEmail}>`,
             to: options.email,
             subject: options.subject,
             html: options.message,

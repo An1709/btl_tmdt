@@ -20,13 +20,19 @@ const getPredictionErrorMessage = (error) => {
         };
     }
 
+    if (code === 'TENSORFLOW_NOT_INSTALLED' || code === 'PYTHON_DEPENDENCY_MISSING') {
+        return {
+            status: 503,
+            code,
+            message: 'MÃ´ hÃ¬nh nháº­n diá»‡n chÆ°a sáºµn sÃ ng. Vui lÃ²ng kiá»ƒm tra Python dependencies.',
+        };
+    }
+
     if (
         code === 'MODEL_NOT_FOUND'
         || code === 'LABELS_NOT_FOUND'
         || code === 'INVALID_LABELS'
-        || code === 'TENSORFLOW_NOT_INSTALLED'
-        || code === 'PYTHON_UNAVAILABLE'
-        || code === 'DEPENDENCY_IMPORT_FAILED'
+        || code === 'PYTHON_NOT_AVAILABLE'
     ) {
         return {
             status: 503,

@@ -228,7 +228,7 @@ export const ensurePetVisionPythonAvailable = async () => {
     if (diagnostics.versionCheckSucceeded) return diagnostics;
 
     throw new PetVisionUnavailableError(
-        'PYTHON_UNAVAILABLE',
+        'PYTHON_NOT_AVAILABLE',
         'Configured Pet Vision Python binary is unavailable.',
         {
             pythonBin: diagnostics.pythonBin,

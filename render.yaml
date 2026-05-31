@@ -3,7 +3,7 @@ services:
     name: petshop-api
     runtime: node
     rootDir: Backend
-    buildCommand: npm install
+    buildCommand: npm install && python -m pip install --upgrade pip && python -m pip install -r ml/requirements.txt
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -49,9 +49,9 @@ services:
       - key: PET_VISION_PYTHON_BIN
         value: python
       - key: PET_VISION_MODEL_PATH
-        value: Backend/ml/models/pet_breed_model.keras
+        value: ml/models/pet_breed_model.keras
       - key: PET_VISION_LABELS_PATH
-        value: Backend/ml/labels.json
+        value: ml/labels.json
       - key: PET_VISION_UPLOAD_DIR
         value: uploads/pet-vision/tmp
       - key: PET_VISION_KEEP_UPLOADS

@@ -128,7 +128,7 @@ def predict(image_path: Path, model_path: Path, labels_path: Path) -> dict[str, 
     except ImportError as error:
         dependency_name = getattr(error, "name", None) or "python_dependency"
         print(f"Pet Vision dependency import failed: {dependency_name}: {error}", file=sys.stderr)
-        return {"success": False, "message": "DEPENDENCY_IMPORT_FAILED"}
+        return {"success": False, "message": "PYTHON_DEPENDENCY_MISSING"}
     probabilities = model.predict(batch, verbose=0)[0]
 
     top_indices = probabilities.argsort()[-3:][::-1]

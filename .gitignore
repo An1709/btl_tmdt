@@ -36,3 +36,7 @@ logs/
 Backend/.env
 Frontend/.env
 .env
+AGENTS
+buildCommand
+AGENTS.md
+buildCommand.txt

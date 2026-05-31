@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 
+const EMAIL_TIMEOUT_MS = 30000;
+
 export class EmailDeliveryError extends Error {
     constructor(code, message, statusCode = 503, cause = null) {
         super(message);
@@ -12,16 +14,22 @@ export class EmailDeliveryError extends Error {
 
 let emailConfigPresenceLogged = false;
 
+const getTransportMode = () => (process.env.SMTP_HOST ? 'smtp' : 'service');
+
 const logEmailConfigPresenceOnce = () => {
     if (emailConfigPresenceLogged) return;
 
     emailConfigPresenceLogged = true;
     console.info('[Email:config]', {
-        has_EMAIL_SERVICE: Boolean(process.env.EMAIL_SERVICE),
+        transportMode: getTransportMode(),
         has_EMAIL_USERNAME: Boolean(process.env.EMAIL_USERNAME),
         has_EMAIL_PASSWORD: Boolean(process.env.EMAIL_PASSWORD),
         has_FROM_EMAIL: Boolean(process.env.FROM_EMAIL),
         has_FROM_NAME: Boolean(process.env.FROM_NAME),
+        SMTP_HOST: process.env.SMTP_HOST || undefined,
+        SMTP_PORT: process.env.SMTP_PORT || undefined,
+        SMTP_SECURE: process.env.SMTP_SECURE || undefined,
+        SMTP_FAMILY: process.env.SMTP_FAMILY || undefined,
     });
 };
 
@@ -37,23 +45,45 @@ const getRequiredEmailConfig = () => {
     if (!username || !password || !fromEmail) {
         throw new EmailDeliveryError(
             'EMAIL_CONFIG_MISSING',
-            'Cấu hình email chưa đầy đủ. Vui lòng kiểm tra EMAIL_USERNAME, EMAIL_PASSWORD và FROM_EMAIL.',
+            'Cau hinh email chua day du. Vui long kiem tra EMAIL_USERNAME, EMAIL_PASSWORD va FROM_EMAIL.',
         );
     }
 
     return { service, username, password, fromEmail, fromName };
 };
 
-const createTransporter = () => {
-    const { service, username, password } = getRequiredEmailConfig();
+const getTransporterOptions = ({ service, username, password }) => {
+    if (process.env.SMTP_HOST) {
+        return {
+            host: process.env.SMTP_HOST,
+            port: Number(process.env.SMTP_PORT || 587),
+            secure: process.env.SMTP_SECURE === 'true',
+            family: Number(process.env.SMTP_FAMILY || 4),
+            auth: {
+                user: username,
+                pass: password,
+            },
+            connectionTimeout: EMAIL_TIMEOUT_MS,
+            greetingTimeout: EMAIL_TIMEOUT_MS,
+            socketTimeout: EMAIL_TIMEOUT_MS,
+        };
+    }
 
-    return nodemailer.createTransport({
+    return {
         service,
         auth: {
             user: username,
             pass: password,
         },
-    });
+        connectionTimeout: EMAIL_TIMEOUT_MS,
+        greetingTimeout: EMAIL_TIMEOUT_MS,
+        socketTimeout: EMAIL_TIMEOUT_MS,
+    };
+};
+
+const createTransporter = (config) => {
+    const transporterOptions = getTransporterOptions(config);
+    return nodemailer.createTransport(transporterOptions);
 };
 
 const getSafeOriginalEmailError = (error) => ({
@@ -83,22 +113,24 @@ const getSafeEmailError = (error) => {
     if (error?.code === 'EAUTH' || error?.responseCode === 535 || error?.responseCode === 534) {
         return new EmailDeliveryError(
             'EMAIL_AUTH_FAILED',
-            'Không thể xác thực tài khoản email. Vui lòng kiểm tra Gmail App Password.',
+            'Khong the xac thuc tai khoan email. Vui long kiem tra Gmail App Password.',
             503,
             error,
         );
     }
 
     if (
-        error?.code === 'ECONNECTION'
-        || error?.code === 'ECONNREFUSED'
+        error?.code === 'ESOCKET'
+        || error?.code === 'ECONNECTION'
         || error?.code === 'ETIMEDOUT'
-        || error?.code === 'ESOCKET'
+        || error?.code === 'ECONNRESET'
+        || error?.code === 'ENETUNREACH'
+        || error?.code === 'ECONNREFUSED'
         || error?.command === 'CONN'
     ) {
         return new EmailDeliveryError(
             'EMAIL_CONNECTION_FAILED',
-            'Không thể kết nối dịch vụ email. Vui lòng thử lại sau.',
+            'Khong the ket noi dich vu email. Vui long thu lai sau.',
             503,
             error,
         );
@@ -106,7 +138,7 @@ const getSafeEmailError = (error) => {
 
     return new EmailDeliveryError(
         'EMAIL_SEND_FAILED',
-        'Không thể gửi email lúc này. Vui lòng thử lại sau.',
+        'Khong the gui email luc nay. Vui long thu lai sau.',
         503,
         error,
     );
@@ -114,11 +146,11 @@ const getSafeEmailError = (error) => {
 
 const sendEmail = async (options) => {
     try {
-        const { fromEmail, fromName } = getRequiredEmailConfig();
-        const transporter = createTransporter();
+        const config = getRequiredEmailConfig();
+        const transporter = createTransporter(config);
 
         await transporter.sendMail({
-            from: `${fromName} <${fromEmail}>`,
+            from: `${config.fromName} <${config.fromEmail}>`,
             to: options.email,
             subject: options.subject,
             html: options.message,

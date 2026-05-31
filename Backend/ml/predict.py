@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,9 +31,25 @@ PREFIX_SPECIES = {
     "ca": "Cá",
 }
 
+SCRIPT_STARTED_AT = time.perf_counter()
+
+
+def log_timing(event: str, started_at: float | None = None, **extra: Any) -> float:
+    now = time.perf_counter()
+    payload = {
+        "event": event,
+        "elapsedMs": round((now - SCRIPT_STARTED_AT) * 1000, 2),
+    }
+    if started_at is not None:
+        payload["durationMs"] = round((now - started_at) * 1000, 2)
+    payload.update(extra)
+    print(f"[PetVision:python] {json.dumps(payload, ensure_ascii=False)}", file=sys.stderr, flush=True)
+    return now
+
 
 def write_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False))
+    log_timing("result JSON emitted")
 
 
 def prettify_words(value: str) -> str:
@@ -98,16 +115,21 @@ def load_labels(labels_path: Path) -> list[dict[str, Any]]:
     return sorted(normalized, key=lambda item: item["index"])
 
 
-def preprocess_image(image_path: Path):
-    import numpy as np
-    import tensorflow as tf
-
+def preprocess_image(image_path: Path, np, tf):
+    image_started_at = log_timing("image loading started", imagePath=str(image_path))
     image = tf.keras.utils.load_img(image_path, target_size=INPUT_SIZE)
+    log_timing("image loading completed", image_started_at, imagePath=str(image_path))
+
+    preprocess_started_at = log_timing("preprocessing started")
     array = tf.keras.utils.img_to_array(image)
-    return np.expand_dims(array, axis=0)
+    batch = np.expand_dims(array, axis=0)
+    log_timing("preprocessing completed", preprocess_started_at)
+    return batch
 
 
 def predict(image_path: Path, model_path: Path, labels_path: Path) -> dict[str, Any]:
+    log_timing("script started")
+
     if not model_path.exists():
         return {"success": False, "message": "MODEL_NOT_FOUND"}
 
@@ -115,21 +137,52 @@ def predict(image_path: Path, model_path: Path, labels_path: Path) -> dict[str, 
         return {"success": False, "message": "IMAGE_NOT_FOUND"}
 
     try:
+        tensorflow_started_at = log_timing("TensorFlow import started")
         import tensorflow as tf
+        log_timing("TensorFlow import completed", tensorflow_started_at)
     except ImportError as error:
         dependency_name = getattr(error, "name", None) or "tensorflow"
         print(f"Pet Vision dependency import failed: {dependency_name}: {error}", file=sys.stderr)
         return {"success": False, "message": "TENSORFLOW_NOT_INSTALLED"}
 
-    labels = load_labels(labels_path)
-    model = tf.keras.models.load_model(model_path)
     try:
-        batch = preprocess_image(image_path)
+        numpy_started_at = log_timing("NumPy import started")
+        import numpy as np
+        log_timing("NumPy import completed", numpy_started_at)
     except ImportError as error:
         dependency_name = getattr(error, "name", None) or "python_dependency"
         print(f"Pet Vision dependency import failed: {dependency_name}: {error}", file=sys.stderr)
         return {"success": False, "message": "PYTHON_DEPENDENCY_MISSING"}
-    probabilities = model.predict(batch, verbose=0)[0]
+
+    try:
+        labels_started_at = log_timing("labels loading started", labelsPath=str(labels_path))
+        labels = load_labels(labels_path)
+        log_timing("labels loading completed", labels_started_at, labelsPath=str(labels_path), classCount=len(labels))
+    except Exception as error:
+        print(f"Labels loading failed: {error}", file=sys.stderr, flush=True)
+        return {"success": False, "message": str(error) or "INVALID_LABELS"}
+
+    try:
+        model_started_at = log_timing("model loading started", modelPath=str(model_path))
+        model = tf.keras.models.load_model(model_path)
+        log_timing("model loading completed", model_started_at, modelPath=str(model_path))
+    except Exception as error:
+        print(f"Model loading failed: {error}", file=sys.stderr, flush=True)
+        return {"success": False, "message": "MODEL_LOAD_FAILED"}
+
+    try:
+        batch = preprocess_image(image_path, np, tf)
+    except Exception as error:
+        print(f"Image preprocessing failed: {error}", file=sys.stderr, flush=True)
+        return {"success": False, "message": "IMAGE_PREPROCESS_FAILED"}
+
+    try:
+        prediction_started_at = log_timing("prediction started")
+        probabilities = model.predict(batch, verbose=0)[0]
+        log_timing("prediction completed", prediction_started_at)
+    except Exception as error:
+        print(f"Prediction failed: {error}", file=sys.stderr, flush=True)
+        return {"success": False, "message": "PREDICTION_FAILED"}
 
     top_indices = probabilities.argsort()[-3:][::-1]
     top_k = []

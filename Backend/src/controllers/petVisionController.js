@@ -29,6 +29,21 @@ const getPredictionErrorMessage = (error) => {
     }
 
     if (
+        code === 'INFERENCE_TIMEOUT'
+        || code === 'PYTHON_PROCESS_FAILED'
+        || code === 'PYTHON_JSON_PARSE_FAILED'
+        || code === 'MODEL_LOAD_FAILED'
+        || code === 'IMAGE_PREPROCESS_FAILED'
+    ) {
+        return {
+            status: 503,
+            code,
+            message: 'KhÃ´ng thá»ƒ nháº­n diá»‡n áº£nh. Vui lÃ²ng kiá»ƒm tra logs Pet Vision.',
+            details: error?.details,
+        };
+    }
+
+    if (
         code === 'MODEL_NOT_FOUND'
         || code === 'LABELS_NOT_FOUND'
         || code === 'INVALID_LABELS'

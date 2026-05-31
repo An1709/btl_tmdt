@@ -9,7 +9,7 @@ import {
     ensurePetVisionReady,
 } from './petVisionRuntime.js';
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_LIMIT = 3;
 
 const SPECIES_MATCHERS = {
@@ -89,7 +89,9 @@ const getPopularityScore = (product) => (
 const parseJsonOutput = (output) => {
     const trimmed = output.trim();
     if (!trimmed) {
-        throw new Error('EMPTY_INFERENCE_OUTPUT');
+        const error = new Error('EMPTY_INFERENCE_OUTPUT');
+        error.code = 'PYTHON_JSON_PARSE_FAILED';
+        throw error;
     }
 
     const firstBrace = trimmed.indexOf('{');
@@ -98,7 +100,13 @@ const parseJsonOutput = (output) => {
         ? trimmed.slice(firstBrace, lastBrace + 1)
         : trimmed;
 
-    return JSON.parse(jsonText);
+    try {
+        return JSON.parse(jsonText);
+    } catch (error) {
+        error.code = 'PYTHON_JSON_PARSE_FAILED';
+        error.stdout = trimmed.slice(0, 1000);
+        throw error;
+    }
 };
 
 const normalizePredictionItem = (item) => ({
@@ -134,6 +142,40 @@ const validatePredictionPayload = (payload) => {
     };
 };
 
+const getPetVisionTimeoutMs = () => {
+    const configuredTimeout = Number(process.env.PET_VISION_TIMEOUT_MS);
+    if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+        return Math.max(1000, Math.floor(configuredTimeout));
+    }
+
+    return DEFAULT_TIMEOUT_MS;
+};
+
+const getSafeSpawnLog = ({
+    args,
+    code,
+    command,
+    endTime,
+    imagePath,
+    pythonBin,
+    scriptPath,
+    startTime,
+    stderr,
+    timeoutMs,
+}) => ({
+    command,
+    pythonBin,
+    scriptPath,
+    imagePath,
+    args,
+    timeoutMs,
+    startTime,
+    endTime,
+    durationMs: startTime && endTime ? new Date(endTime).getTime() - new Date(startTime).getTime() : undefined,
+    exitCode: code,
+    stderr: stderr?.trim() || undefined,
+});
+
 export const runPetVisionInference = async (imagePath) => {
     const readiness = ensurePetVisionReady();
     await ensurePetVisionPythonAvailable();
@@ -141,6 +183,18 @@ export const runPetVisionInference = async (imagePath) => {
     const pythonBin = readiness.pythonBin;
     const scriptPath = path.resolve(backendRoot, 'ml', 'predict.py');
     const args = [scriptPath, '--image', imagePath, '--model', readiness.modelPath, '--labels', readiness.labelsPath];
+    const timeoutMs = getPetVisionTimeoutMs();
+    const startTime = new Date().toISOString();
+
+    console.info('[PetVision:spawn:start]', getSafeSpawnLog({
+        command: [pythonBin, ...args].join(' '),
+        pythonBin,
+        scriptPath,
+        imagePath,
+        args,
+        timeoutMs,
+        startTime,
+    }));
 
     return new Promise((resolve, reject) => {
         const child = spawn(pythonBin, args, {
@@ -157,8 +211,23 @@ export const runPetVisionInference = async (imagePath) => {
             if (settled) return;
             settled = true;
             child.kill('SIGKILL');
-            reject(new Error('INFERENCE_TIMEOUT'));
-        }, DEFAULT_TIMEOUT_MS);
+            const endTime = new Date().toISOString();
+            console.error('[PetVision:spawn:timeout]', getSafeSpawnLog({
+                command: [pythonBin, ...args].join(' '),
+                pythonBin,
+                scriptPath,
+                imagePath,
+                args,
+                timeoutMs,
+                startTime,
+                endTime,
+                stderr,
+            }));
+            const error = new Error('INFERENCE_TIMEOUT');
+            error.code = 'INFERENCE_TIMEOUT';
+            error.details = { timeoutMs, startTime, endTime };
+            reject(error);
+        }, timeoutMs);
 
         child.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
@@ -172,6 +241,30 @@ export const runPetVisionInference = async (imagePath) => {
             if (settled) return;
             settled = true;
             clearTimeout(timeout);
+            const endTime = new Date().toISOString();
+            console.error('[PetVision:spawn:error]', {
+                ...getSafeSpawnLog({
+                    command: [pythonBin, ...args].join(' '),
+                    pythonBin,
+                    scriptPath,
+                    imagePath,
+                    args,
+                    timeoutMs,
+                    startTime,
+                    endTime,
+                    stderr,
+                }),
+                errorName: error.name,
+                errorCode: error.code,
+                errorMessage: error.message,
+            });
+            error.details = {
+                originalCode: error.code,
+                startTime,
+                endTime,
+                stderr: stderr.trim(),
+            };
+            error.code = 'PYTHON_PROCESS_FAILED';
             reject(error);
         });
 
@@ -179,9 +272,26 @@ export const runPetVisionInference = async (imagePath) => {
             if (settled) return;
             settled = true;
             clearTimeout(timeout);
+            const endTime = new Date().toISOString();
+
+            console.info('[PetVision:spawn:end]', getSafeSpawnLog({
+                command: [pythonBin, ...args].join(' '),
+                pythonBin,
+                scriptPath,
+                imagePath,
+                args,
+                timeoutMs,
+                startTime,
+                endTime,
+                code,
+                stderr,
+            }));
 
             if (code !== 0) {
-                reject(new Error(stderr.trim() || 'INFERENCE_FAILED'));
+                const error = new Error(stderr.trim() || 'PYTHON_PROCESS_FAILED');
+                error.code = 'PYTHON_PROCESS_FAILED';
+                error.details = { exitCode: code, stderr: stderr.trim(), startTime, endTime };
+                reject(error);
                 return;
             }
 
@@ -192,6 +302,12 @@ export const runPetVisionInference = async (imagePath) => {
                 const payload = parseJsonOutput(stdout);
                 resolve(validatePredictionPayload(payload));
             } catch (error) {
+                console.error('[PetVision:stdout:parse-error]', {
+                    code: error?.code || 'PYTHON_JSON_PARSE_FAILED',
+                    message: error?.message,
+                    stdoutPreview: error?.stdout || stdout.trim().slice(0, 1000),
+                    stderr: stderr.trim() || undefined,
+                });
                 reject(error);
             }
         });

@@ -58,3 +58,5 @@ services:
         value: false
       - key: PET_VISION_CONFIDENCE_THRESHOLD
         value: 0.55
+      - key: PET_VISION_TIMEOUT_MS
+        value: 120000

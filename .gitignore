@@ -33,3 +33,6 @@ logs/
 *.log
 .DS_Store
 .serena/
+Backend/.env
+Frontend/.env
+.env

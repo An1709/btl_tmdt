@@ -6,6 +6,7 @@ import Session from '../models/Session.js';
 import VerificationCode from '../models/VerificationCode.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import sendEmail, { EmailDeliveryError } from '../utils/sendEmail.js';
+import { getAccessTokenSecret } from '../config/auth.js';
 
 const ACCESS_TOKEN_TTL = '30m'; // 30 phút
 const REFRESH_TOKEN_TTL = 14 * 24 * 60 * 60 * 1000;
@@ -259,7 +260,7 @@ export const signIn = async (req, res) => {
         //nếu khớp, tạo access token 
         const accessToken = jwt.sign(
             {userId: user._id},
-            process.env.ACCESS_TOKEN_SECRET,
+            getAccessTokenSecret(),
             { expiresIn: ACCESS_TOKEN_TTL },
         );
 
@@ -610,7 +611,7 @@ export const refreshToken = async (req, res) => {
         //tạo access token mới
         const accessToken = jwt.sign(
             { userId: session.userId },
-            process.env.ACCESS_TOKEN_SECRET,
+            getAccessTokenSecret(),
             { expiresIn: ACCESS_TOKEN_TTL },
         );
         return res.status(200).json({ accessToken });

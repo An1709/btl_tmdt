@@ -2,6 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { chatWithAI } from '../controllers/aiController.js';
+import { getAccessTokenSecret } from '../config/auth.js';
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ const optionalAuth = async (req, res, next) => {
 
         if (!token) return next();
 
-        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        const decoded = jwt.verify(token, getAccessTokenSecret());
         const user = await User.findById(decoded.userId).select('-hashedPassword');
 
         if (user && !user.isBlocked && user.isEmailVerified !== false) {

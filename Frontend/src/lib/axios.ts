@@ -1,10 +1,11 @@
 import { useAuthStore } from "@/stores/useAuthStore";
 import axios from "axios";
+import { API_BASE_URL } from "@/utils/constants";
 
 //file này dùng để cấu hình axios instance với các interceptor để tự động thêm token xác thực vào header của các yêu cầu và xử lý làm mới token khi hết hạn.  
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 

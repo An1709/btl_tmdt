@@ -3,6 +3,7 @@ import Review from '../models/Review.js';
 import APIFeatures from '../utils/apiFeatures.js';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
+import { getAccessTokenSecret } from '../config/auth.js';
 import User from '../models/User.js';
 import Cart from '../models/Cart.js';
 import Order from '../models/Order.js';
@@ -70,7 +71,7 @@ const getOptionalUser = async (req) => {
         const token = getTokenFromRequest(req);
         if (!token) return null;
 
-        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        const decoded = jwt.verify(token, getAccessTokenSecret());
         const user = await User.findById(decoded.userId).select('_id isBlocked isEmailVerified');
 
         if (!user || user.isBlocked || user.isEmailVerified === false) {

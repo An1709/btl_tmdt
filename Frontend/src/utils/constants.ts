@@ -1,5 +1,11 @@
 export const PAGE_SIZE = 12;
-export const API_URL = import.meta.env.VITE_API_URL;
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:5001";
+
+export const API_URL = trimTrailingSlash(rawApiUrl).replace(/\/api$/, "");
+export const API_BASE_URL = `${API_URL}/api`;
 
 export const IMAGE_ASSETS = {
     logo: "https://res.cloudinary.com/dvijnss6y/image/upload/v1779287171/logo_q9v0ln.svg",

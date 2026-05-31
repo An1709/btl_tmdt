@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: petshop-api
+    runtime: node
+    rootDir: Backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: EMAIL_SERVICE
+        value: gmail
+      - key: EMAIL_USERNAME
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: FROM_NAME
+        value: PetMart
+      - key: VNP_TMN_CODE
+        sync: false
+      - key: VNP_HASH_SECRET
+        sync: false
+      - key: VNP_URL
+        value: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+      - key: VNP_RETURN_URL
+        sync: false
+      - key: VNP_IPN_URL
+        sync: false
+      - key: VNP_API
+        value: https://sandbox.vnpayment.vn/merchant_webapi/api/transaction
+      - key: PET_VISION_ENABLED
+        value: true
+      - key: PET_VISION_PYTHON_BIN
+        value: python
+      - key: PET_VISION_MODEL_PATH
+        value: Backend/ml/models/pet_breed_model.keras
+      - key: PET_VISION_LABELS_PATH
+        value: Backend/ml/labels.json
+      - key: PET_VISION_UPLOAD_DIR
+        value: uploads/pet-vision/tmp
+      - key: PET_VISION_KEEP_UPLOADS
+        value: false
+      - key: PET_VISION_CONFIDENCE_THRESHOLD
+        value: 0.55

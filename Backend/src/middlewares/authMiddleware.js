@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { getAccessTokenSecret } from '../config/auth.js';
 
 // 1. Middleware Xác thực (Authentication) - Kiểm tra đăng nhập
 export const protectedRoute = async (req, res, next) => {
@@ -22,7 +23,7 @@ export const protectedRoute = async (req, res, next) => {
 
         // Xác thực token
         // Lưu ý: Dùng try-catch bọc jwt.verify để bắt lỗi hết hạn/sai token gọn hơn callback
-        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        const decoded = jwt.verify(token, getAccessTokenSecret());
 
         // Tìm user từ decoded.userId (khớp với payload khi bạn tạo token)
         // .select('-hashedPassword'): Loại bỏ trường mật khẩu khỏi kết quả trả về

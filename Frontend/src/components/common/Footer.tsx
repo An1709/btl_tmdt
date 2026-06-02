@@ -141,7 +141,7 @@ const Footer = () => {
                             <span>📧</span> hello@petmart.vn
                         </div>
                         <div className="flex items-center gap-1.5 text-sm text-white/60">
-                            <span>📍</span> TP. Hồ Chí Minh, VN
+                            <span>📍</span> TP. Hà Nội, Việt Nam
                         </div>
                     </div>
 

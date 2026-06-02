@@ -514,7 +514,10 @@ export const getPersonalizedRecommendations = async (req, res) => {
             products = pickUniqueProductList([products, fallbackProducts], limit, excludedIds);
         }
 
-        res.json({ products: products.map(toProductCardPayload) });
+        const summaryMap = await getReviewSummary(products.map((product) => product._id));
+        const finalProducts = products.map((product) => applyReviewSummary(product, summaryMap));
+
+        res.json({ products: finalProducts.map(toProductCardPayload) });
     } catch {
         res.status(500).json({ message: 'Không thể tải gợi ý dành cho bạn.' });
     }
@@ -677,11 +680,13 @@ export const getProductRecommendations = async (req, res) => {
                 .sort({ stock: -1, sold: -1, views: -1, averageRating: -1, reviewCount: -1, createdAt: -1 })
                 .limit(limit)
                 .lean();
-
             products = pickUniqueProducts([products, fallbackProducts], limit, currentProduct._id);
         }
 
-        res.json({ products });
+        const summaryMap = await getReviewSummary(products.map((product) => product._id));
+        const finalProducts = products.map((product) => applyReviewSummary(product, summaryMap));
+
+        res.json({ products: finalProducts });
     } catch {
         res.status(500).json({ message: 'Không thể tải sản phẩm liên quan.' });
     }
@@ -758,8 +763,10 @@ export const getProductComboSuggestions = async (req, res) => {
             sameCategoryProducts,
             popularProducts,
         ], limit, [currentProduct._id]);
+        const summaryMap = await getReviewSummary(products.map((product) => product._id));
+        const finalProducts = products.map((product) => applyReviewSummary(product, summaryMap));
 
-        res.json({ products: products.map(toProductCardPayload) });
+        res.json({ products: finalProducts.map(toProductCardPayload) });
     } catch {
         res.status(500).json({ message: 'KhÃ´ng thá»ƒ táº£i sáº£n pháº©m mua kÃ¨m.' });
     }

@@ -72,7 +72,7 @@ export const mapProduct = (raw: any): Product => ({
     categoryId: typeof raw.category === "object" && raw.category !== null
         ? (raw.category._id ?? raw.category.id)
         : raw.category,
-    rating: raw.averageRating ?? raw.rating ?? 0,
+    rating: (raw.reviewCount && raw.reviewCount > 0) ? (raw.averageRating ?? raw.rating ?? 0) : 0,
     reviewCount: raw.reviewCount ?? 0,
     // derive badge: sale if discounted, hot if sold >200, new otherwise
     badge: (calculateDiscountPercent(raw.price, raw.originalPrice) >= 1
@@ -105,7 +105,7 @@ const mapProductSuggestion = (raw: any): ProductSuggestion => {
         categoryName: category?.name ?? category?.slug ?? "Sản phẩm",
         stock: raw.stock ?? 0,
         inStock: (raw.stock ?? 0) > 0,
-        rating: raw.averageRating ?? raw.rating ?? 0,
+        rating: (raw.reviewCount && raw.reviewCount > 0) ? (raw.averageRating ?? raw.rating ?? 0) : 0,
     };
 };
 

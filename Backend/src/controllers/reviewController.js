@@ -21,7 +21,7 @@ export const getAllReviews = async (req, res) => {
     try {
         // Populate để biết ai viết và viết cho sản phẩm nào
         const reviews = await Review.find({})
-            .populate('user', 'fullName email')
+            .populate('user', 'displayName username email')
             .populate('product', 'name')
             .sort({ createdAt: -1 }); // Mới nhất lên đầu
             

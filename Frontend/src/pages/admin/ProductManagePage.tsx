@@ -3,6 +3,7 @@ import { productService, type ProductPayload } from "@/services/productService";
 import { categoryService, type DbCategory } from "@/services/categoryService";
 import type { Product } from "@/types/product";
 import DataTable, { type Column } from "@/components/features/admin/DataTable";
+import Pagination from "@/components/common/Pagination";
 import { formatCurrency } from "@/utils/format";
 import { IMAGE_ASSETS } from "@/utils/constants";
 import { toast } from "sonner";
@@ -38,17 +39,29 @@ const ProductManagePage = () => {
     const [formOpen, setFormOpen] = useState(false);
     const [form, setForm] = useState<ProductFormState>(emptyForm);
 
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalProducts, setTotalProducts] = useState(0);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
+
     const loadProducts = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await productService.getAll({ limit: 100 });
+            const res = await productService.getAll({
+                page,
+                limit: 10,
+                search: searchTerm || undefined
+            });
             setProducts(res.data);
+            setTotalPages(res.totalPages);
+            setTotalProducts(res.total);
         } catch {
             toast.error("Không thể tải danh sách sản phẩm.");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [page, searchTerm]);
 
     const loadCategories = useCallback(async () => {
         try {
@@ -61,8 +74,11 @@ const ProductManagePage = () => {
 
     useEffect(() => {
         loadProducts();
+    }, [loadProducts]);
+
+    useEffect(() => {
         loadCategories();
-    }, [loadProducts, loadCategories]);
+    }, [loadCategories]);
 
     const categoryLabel = (product: Product) => {
         const match = categories.find(
@@ -143,13 +159,16 @@ const ProductManagePage = () => {
         try {
             setSaving(true);
             if (editingProduct) {
-                const updated = await productService.update(editingProduct.id, payload);
-                setProducts((prev) => prev.map((product) => product.id === updated.id ? updated : product));
+                await productService.update(editingProduct.id, payload);
                 toast.success("Đã cập nhật sản phẩm.");
+                void loadProducts();
             } else {
-                const created = await productService.create(payload);
-                setProducts((prev) => [created, ...prev]);
+                await productService.create(payload);
                 toast.success("Đã thêm sản phẩm.");
+                setPage(1);
+                setSearchTerm("");
+                setSearchQuery("");
+                void loadProducts();
             }
             closeForm();
         } catch (err: unknown) {
@@ -168,7 +187,7 @@ const ProductManagePage = () => {
         try {
             await productService.delete(id);
             toast.success("Đã xóa sản phẩm.");
-            setProducts((prev) => prev.filter((p) => p.id !== id));
+            void loadProducts();
         } catch {
             toast.error("Xóa thất bại. Vui lòng thử lại.");
         }
@@ -202,9 +221,38 @@ const ProductManagePage = () => {
         <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <h1 className="section-title">
-                    Quản Lý Sản Phẩm ({loading ? "..." : products.length})
+                    Quản Lý Sản Phẩm ({loading ? "..." : totalProducts})
                 </h1>
                 <button onClick={openCreateForm} className="btn-pet-primary">+ Thêm sản phẩm</button>
+            </div>
+
+            {/* Search box matching web app aesthetics */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <div className="relative w-full sm:max-w-md">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm sản phẩm theo tên..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                setSearchTerm(searchQuery.trim());
+                                setPage(1);
+                            }
+                        }}
+                        className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-border bg-white dark:bg-card text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all shadow-sm"
+                    />
+                    <button
+                        onClick={() => {
+                            setSearchTerm(searchQuery.trim());
+                            setPage(1);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-[var(--pet-coral)] text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-all"
+                    >
+                        Tìm
+                    </button>
+                </div>
             </div>
 
             {formOpen && (
@@ -249,18 +297,25 @@ const ProductManagePage = () => {
                     ))}
                 </div>
             ) : (
-                <DataTable
-                    columns={columns}
-                    data={products}
-                    keyExtractor={(p) => p.id}
-                    emptyText="Không có sản phẩm nào."
-                    actions={(p) => (
-                        <div className="flex gap-2 justify-end">
-                            <button onClick={() => openEditForm(p)} className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold">Sửa</button>
-                            <button onClick={() => handleDelete(p.id)} className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold">Xóa</button>
-                        </div>
-                    )}
-                />
+                <>
+                    <DataTable
+                        columns={columns}
+                        data={products}
+                        keyExtractor={(p) => p.id}
+                        emptyText="Không có sản phẩm nào."
+                        actions={(p) => (
+                            <div className="flex gap-2 justify-end">
+                                <button onClick={() => openEditForm(p)} className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold">Sửa</button>
+                                <button onClick={() => handleDelete(p.id)} className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold">Xóa</button>
+                            </div>
+                        )}
+                    />
+                    <Pagination
+                        page={page}
+                        totalPages={totalPages}
+                        onChange={setPage}
+                    />
+                </>
             )}
         </div>
     );

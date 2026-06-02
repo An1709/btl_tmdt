@@ -2,40 +2,27 @@ import { Link } from "react-router";
 
 const team = [
     {
-        name: "Nguyễn Minh Khoa",
-        role: "Founder & CEO",
-        emoji: "🧑‍💼",
+        name: "Nguyễn Tiến An",
+        role: "Founder & Lead Developer",
+        emoji: "🧑‍💻",
         desc: "Người sáng lập PetMart, đam mê thú cưng và công nghệ từ thuở nhỏ.",
     },
     {
-        name: "Trần Thị Lan",
-        role: "Head of Care",
-        emoji: "👩‍⚕️",
-        desc: "Bác sĩ thú y với hơn 8 năm kinh nghiệm, đảm bảo mọi thú cưng đều khỏe mạnh.",
-    },
-    {
-        name: "Lê Văn Hùng",
-        role: "Lead Developer",
-        emoji: "🧑‍💻",
-        desc: "Kiến trúc sư hệ thống, xây dựng nền tảng PetMart từ con số 0.",
-    },
-    {
-        name: "Phạm Thu Hà",
-        role: "Customer Success",
-        emoji: "👩‍🎤",
-        desc: "Luôn lắng nghe và hỗ trợ khách hàng với nụ cười tươi 24/7.",
+        name: "Hoàng Minh Nghĩa",
+        role: "Co-Founder & Marketing",
+        emoji: "🧑‍💼",
+        desc: "Đồng sáng lập PetMart, đảm nhiệm truyền thông.",
     },
 ];
 
 const milestones = [
-    { year: "2019", title: "Thành lập", desc: "PetMart ra đời tại TP. Hồ Chí Minh với 5 thành viên sáng lập." },
-    { year: "2020", title: "1,000 khách hàng", desc: "Cột mốc đầu tiên — 1,000 gia đình đã tìm được người bạn đồng hành." },
-    { year: "2022", title: "Mở rộng toàn quốc", desc: "Dịch vụ giao thú cưng phủ sóng 63 tỉnh thành trên cả nước." },
-    { year: "2024", title: "10,000+ khách hàng", desc: "Trở thành pet shop online #1 Việt Nam, được xếp hạng 5 sao liên tiếp." },
+    { year: "02/2026", title: "Thành lập", desc: "PetMart ra đời tại TP. Hà Nội." },
+    { year: "04/2026", title: "1,000 khách hàng", desc: "Cột mốc đầu tiên — 1,000 gia đình đã tìm được người bạn đồng hành." },
+    { year: "05/2026", title: "Mở rộng toàn quốc", desc: "Dịch vụ giao thú cưng phủ sóng 63 tỉnh thành trên cả nước." },
 ];
 
 const values = [
-    { emoji: "❤️", title: "Yêu Thương", desc: "Mỗi thú cưng là một sinh linh sống – chúng deserves được yêu thương như thành viên gia đình." },
+    { emoji: "❤️", title: "Yêu Thương", desc: "Mỗi thú cưng là một sinh linh sống – chúng xứng đáng được yêu thương như thành viên gia đình." },
     { emoji: "🛡️", title: "Trách Nhiệm", desc: "Cam kết minh bạch về nguồn gốc, sức khỏe và chất lượng của từng thú cưng." },
     { emoji: "🌱", title: "Bền Vững", desc: "Hợp tác với các trại nuôi đạo đức, không ủng hộ kinh doanh thú cưng phi pháp." },
     { emoji: "🤝", title: "Cộng Đồng", desc: "Xây dựng cộng đồng yêu thú cưng, chia sẻ kiến thức và hỗ trợ lẫn nhau." },
@@ -95,7 +82,7 @@ const AboutPage = () => {
                             <span className="gradient-text">người và thú cưng</span>
                         </h2>
                         <p className="text-muted-foreground leading-relaxed mb-4">
-                            PetMart được thành lập năm 2019 với một sứ mệnh đơn giản: giúp mọi gia đình tìm được người
+                            PetMart được thành lập năm 2026 với một sứ mệnh đơn giản: giúp mọi gia đình tìm được người
                             bạn đồng hành phù hợp một cách an toàn, minh bạch và đầy yêu thương.
                         </p>
                         <p className="text-muted-foreground leading-relaxed">
@@ -105,9 +92,9 @@ const AboutPage = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            { value: "10,000+", label: "Gia đình hạnh phúc", emoji: "🏠" },
-                            { value: "500+", label: "Giống thú cưng", emoji: "🐾" },
-                            { value: "5 năm", label: "Kinh nghiệm", emoji: "⭐" },
+                            { value: "1,000+", label: "Gia đình hạnh phúc", emoji: "🏠" },
+                            { value: "100+", label: "Giống thú cưng", emoji: "🐾" },
+                            { value: "50+", label: "Chuyên gia tin tưởng", emoji: "⭐" },
                             { value: "63", label: "Tỉnh thành phủ sóng", emoji: "🗺️" },
                         ].map((s) => (
                             <div key={s.label} className="bg-muted/50 dark:bg-muted/20 border border-border rounded-2xl p-5 text-center hover:shadow-md transition-shadow">
@@ -176,9 +163,9 @@ const AboutPage = () => {
                         <h2 className="section-title">Đội Ngũ Của Chúng Tôi</h2>
                         <p className="text-sm text-muted-foreground mt-1">Những con người đứng sau PetMart</p>
                     </div>
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="flex flex-wrap justify-center gap-6">
                         {team.map((t) => (
-                            <div key={t.name} className="bg-background border border-border rounded-2xl p-6 text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                            <div key={t.name} className="bg-background border border-border rounded-2xl p-6 text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-300 w-full sm:w-[calc(50%-12px)] lg:w-[280px]">
                                 <div className="text-5xl mb-3">{t.emoji}</div>
                                 <h3 className="font-bold text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>{t.name}</h3>
                                 <p className="text-xs font-semibold text-[var(--pet-coral)] mb-2">{t.role}</p>

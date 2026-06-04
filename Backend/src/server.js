@@ -25,6 +25,7 @@ import adminPetVisionRoutes from './routes/adminPetVisionRoutes.js';
 import {
     logPetVisionPythonDiagnosticsOnce,
     logPetVisionRuntimeDiagnosticsOnce,
+    startInferenceServer,
 } from './services/petVisionRuntime.js';
 
 const PORT = process.env.PORT || 5001;
@@ -105,6 +106,14 @@ connectDB().then(() => {
         logPetVisionRuntimeDiagnosticsOnce();
         logPetVisionPythonDiagnosticsOnce().catch((error) => {
             console.error('[PetVision:python] Diagnostics failed:', error?.message || error);
+        });
+        // Start the Python inference server in the background so the model is
+        // loaded once and kept in memory for all prediction requests.
+        startInferenceServer().catch((error) => {
+            console.warn(
+                '[PetVision:server] Inference server did not start (will fall back to subprocess mode):',
+                error?.message || error,
+            );
         });
     });
 }).catch((error) => {

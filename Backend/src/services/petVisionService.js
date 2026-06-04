@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
+import http from 'http';
 import path from 'path';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
@@ -7,6 +8,7 @@ import {
     backendRoot,
     ensurePetVisionPythonAvailable,
     ensurePetVisionReady,
+    getInferenceServerState,
 } from './petVisionRuntime.js';
 
 const DEFAULT_TIMEOUT_MS = 120000;
@@ -21,6 +23,31 @@ const SPECIES_MATCHERS = {
         exactTerms: ['mèo'],
         normalizedTerms: ['meo', 'cat', 'kitten'],
     },
+    Thỏ: {
+        exactTerms: ['thỏ'],
+        normalizedTerms: ['tho', 'rabbit', 'bunny'],
+    },
+    Hamster: {
+        exactTerms: ['hamster'],
+        normalizedTerms: ['hamster'],
+    },
+    Vẹt: {
+        exactTerms: ['vẹt', 'chim'],
+        normalizedTerms: ['vet', 'chim', 'bird', 'parrot'],
+    },
+    Cá: {
+        exactTerms: ['cá'],
+        normalizedTerms: ['ca', 'fish', 'aquarium', 'thuy sinh'],
+    },
+};
+
+const SPECIES_FALLBACK_LABELS = {
+    Chó: 'chó',
+    Mèo: 'mèo',
+    Thỏ: 'thỏ',
+    Hamster: 'hamster',
+    Vẹt: 'vẹt',
+    Cá: 'cá',
 };
 
 const PRODUCT_FIELDS = '_id name slug price images category stock specifications description sold views averageRating reviewCount';
@@ -77,6 +104,25 @@ const getProductSpeciesScore = (product, matcher, matchedCategoryIds) => {
     if (includesSpeciesTerm(descriptionText, matcher)) score += 15;
 
     return score;
+};
+
+const getProductSearchText = (product) => normalizeText([
+    product.name,
+    product.description,
+    getCategoryText(product.category),
+    getSpecificationText(product.specifications),
+].filter(Boolean).join(' '));
+
+const getBreedTerms = (breed = '') => {
+    const normalizedBreed = normalizeText(breed).trim();
+    const rawBreed = String(breed || '').toLowerCase().trim();
+    return [...new Set([normalizedBreed, rawBreed].filter(Boolean))];
+};
+
+const productMatchesBreed = (product, breedTerms) => {
+    if (!breedTerms.length) return false;
+    const searchText = getProductSearchText(product);
+    return breedTerms.some((term) => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(searchText));
 };
 
 const getPopularityScore = (product) => (
@@ -176,9 +222,78 @@ const getSafeSpawnLog = ({
     stderr: stderr?.trim() || undefined,
 });
 
-export const runPetVisionInference = async (imagePath) => {
+// ---------------------------------------------------------------------------
+// HTTP-based inference (model loaded once in long-running Python server)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send an inference request to the long-running Python inference server.
+ * The server keeps the model in memory across all requests.
+ */
+const runInferenceViaServer = (imagePath, serverPort) => new Promise((resolve, reject) => {
+    const body = JSON.stringify({ imagePath });
+    const timeoutMs = getPetVisionTimeoutMs();
+    const startTime = new Date().toISOString();
+
+    console.info('[PetVision:server:request]', { imagePath, port: serverPort, startTime });
+
+    const req = http.request(
+        {
+            host: '127.0.0.1',
+            port: serverPort,
+            path: '/predict',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+            },
+            timeout: timeoutMs,
+        },
+        (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                const endTime = new Date().toISOString();
+                console.info('[PetVision:server:response]', {
+                    statusCode: res.statusCode,
+                    imagePath,
+                    startTime,
+                    endTime,
+                    durationMs: new Date(endTime).getTime() - new Date(startTime).getTime(),
+                });
+                try {
+                    const payload = parseJsonOutput(data);
+                    resolve(validatePredictionPayload(payload));
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        },
+    );
+
+    req.on('timeout', () => {
+        req.destroy();
+        const error = new Error('INFERENCE_TIMEOUT');
+        error.code = 'INFERENCE_TIMEOUT';
+        error.details = { timeoutMs, startTime };
+        reject(error);
+    });
+
+    req.on('error', (error) => {
+        error.code = error.code || 'PYTHON_PROCESS_FAILED';
+        reject(error);
+    });
+
+    req.write(body);
+    req.end();
+});
+
+// ---------------------------------------------------------------------------
+// Subprocess-based inference (model re-loaded every call — legacy fallback)
+// ---------------------------------------------------------------------------
+
+const runInferenceViaSubprocess = (imagePath) => {
     const readiness = ensurePetVisionReady();
-    await ensurePetVisionPythonAvailable();
 
     const pythonBin = readiness.pythonBin;
     const scriptPath = path.resolve(backendRoot, 'ml', 'predict.py');
@@ -314,9 +429,60 @@ export const runPetVisionInference = async (imagePath) => {
     });
 };
 
-export const getSuggestedProductsForSpecies = async (species, limit = DEFAULT_LIMIT) => {
+// ---------------------------------------------------------------------------
+// Public inference entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Run pet-breed inference on the given image path.
+ *
+ * Strategy:
+ *  1. If the long-running Python inference server is ready, use HTTP (model
+ *     loaded once, fastest path).
+ *  2. Otherwise fall back to spawning a subprocess (model re-loaded each call).
+ */
+export const runPetVisionInference = async (imagePath) => {
+    // Ensure basic readiness (model file exists, labels exist) — throws
+    // PetVisionUnavailableError if not.
+    ensurePetVisionReady();
+    await ensurePetVisionPythonAvailable();
+
+    const serverState = getInferenceServerState();
+    if (serverState.state === 'ready') {
+        try {
+            return await runInferenceViaServer(imagePath, serverState.port);
+        } catch (error) {
+            // If the server HTTP call fails, fall through to subprocess so the
+            // request is not lost.  The server will auto-restart on the next call.
+            console.warn('[PetVision] Server inference failed, falling back to subprocess:', error?.message);
+        }
+    }
+
+    return runInferenceViaSubprocess(imagePath);
+};
+
+const serializeSuggestedProduct = (product) => ({
+    _id: product._id,
+    name: product.name,
+    slug: product.slug,
+    price: product.price,
+    images: product.images || [],
+    category: product.category,
+    stock: product.stock,
+    specifications: product.specifications || {},
+});
+
+const getSuggestedProductsForCriteria = async ({ species, breed } = {}, limit = DEFAULT_LIMIT) => {
     const matcher = SPECIES_MATCHERS[species];
-    if (!matcher) return [];
+    if (!matcher) {
+        return {
+            products: [],
+            recommendationNote: 'Hiện PetMart chưa có sản phẩm phù hợp với yêu cầu này.',
+            exactBreedMatch: false,
+        };
+    }
+
+    const breedTerms = getBreedTerms(breed);
 
     const categories = await Category.find().select('_id name slug description').lean();
     const matchedCategoryIds = new Set(
@@ -336,6 +502,7 @@ export const getSuggestedProductsForSpecies = async (species, limit = DEFAULT_LI
         .map((product) => ({
             product,
             score: getProductSpeciesScore(product, matcher, matchedCategoryIds),
+            breedMatch: productMatchesBreed(product, breedTerms),
         }))
         .filter(({ score }) => score > 0)
         .sort((a, b) => {
@@ -348,28 +515,49 @@ export const getSuggestedProductsForSpecies = async (species, limit = DEFAULT_LI
         });
 
     const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, DEFAULT_LIMIT));
-    const products = scoredProducts.slice(0, safeLimit).map(({ product }) => product);
+    const exactBreedProducts = breedTerms.length
+        ? scoredProducts.filter(({ breedMatch }) => breedMatch)
+        : [];
+    const selectedProducts = exactBreedProducts.length
+        ? exactBreedProducts
+        : scoredProducts;
+    const products = selectedProducts.slice(0, safeLimit).map(({ product }) => product);
+    const exactBreedMatch = !breedTerms.length || exactBreedProducts.length > 0;
+    const recommendationNote = products.length === 0
+        ? 'Hiện PetMart chưa có sản phẩm phù hợp với yêu cầu này.'
+        : !exactBreedMatch && breed
+            ? `Hiện PetMart chưa có sản phẩm đúng giống ${breed}. Mình gợi ý một số sản phẩm cùng loài ${SPECIES_FALLBACK_LABELS[species] || species}:`
+            : '';
 
     if (process.env.NODE_ENV !== 'production') {
         console.info('[PetVision:suggestions]', {
             species,
+            breed,
             matchedCategoryCount: matchedCategoryIds.size,
             matchedProductCount: scoredProducts.length,
+            exactBreedMatchCount: exactBreedProducts.length,
             returnedProductCount: products.length,
         });
     }
 
-    return products.map((product) => ({
-        _id: product._id,
-        name: product.name,
-        slug: product.slug,
-        price: product.price,
-        images: product.images || [],
-        category: product.category,
-        stock: product.stock,
-        specifications: product.specifications || {},
-    }));
+    return {
+        products: products.map(serializeSuggestedProduct),
+        recommendationNote,
+        exactBreedMatch,
+    };
 };
+
+export const getSuggestedProductsForSpecies = async (species, limit = DEFAULT_LIMIT) => {
+    const { products } = await getSuggestedProductsForCriteria({ species }, limit);
+    return products;
+};
+
+export const getSuggestedProductsForPrediction = async (prediction, limit = DEFAULT_LIMIT) => (
+    getSuggestedProductsForCriteria({
+        species: prediction?.species,
+        breed: prediction?.breed,
+    }, limit)
+);
 
 export const cleanupPetVisionImage = async (imagePath) => {
     if (process.env.PET_VISION_KEEP_UPLOADS === 'true') return;

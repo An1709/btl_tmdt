@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -13,8 +14,22 @@ const DEFAULT_LABELS_PATH = path.resolve(backendRoot, 'ml', 'labels.json');
 const DEFAULT_UPLOAD_DIR = path.resolve(backendRoot, 'uploads', 'pet-vision', 'tmp');
 const PYTHON_DIAGNOSTIC_TIMEOUT_MS = 5000;
 
+/** Port the Python inference HTTP server listens on (localhost only). */
+const INFERENCE_SERVER_PORT = Number(process.env.PET_VISION_SERVER_PORT) || 5002;
+const INFERENCE_SERVER_HOST = '127.0.0.1';
+
 let runtimeDiagnosticsLogged = false;
 let pythonDiagnosticsPromise = null;
+
+// ---------------------------------------------------------------------------
+// Inference server state
+// ---------------------------------------------------------------------------
+
+/** @type {'stopped' | 'starting' | 'ready' | 'failed'} */
+let _inferenceServerState = 'stopped';
+/** Resolves when the server is ready (or rejects if startup fails). */
+let _inferenceServerReadyPromise = null;
+let _inferenceServerProcess = null;
 
 export class PetVisionUnavailableError extends Error {
     constructor(code, message, details = {}, statusCode = 503) {
@@ -237,4 +252,205 @@ export const ensurePetVisionPythonAvailable = async () => {
             errorCode: diagnostics.errorCode,
         },
     );
+};
+
+// ---------------------------------------------------------------------------
+// Inference server lifecycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the current state of the Python inference server.
+ * @returns {{ state: string, port: number, host: string }}
+ */
+export const getInferenceServerState = () => ({
+    state: _inferenceServerState,
+    port: INFERENCE_SERVER_PORT,
+    host: INFERENCE_SERVER_HOST,
+});
+
+/**
+ * Probe the /health endpoint of the inference server.
+ * Resolves true if healthy, false otherwise.
+ */
+export const probeInferenceServerHealth = () => new Promise((resolve) => {
+    const req = http.request(
+        {
+            host: INFERENCE_SERVER_HOST,
+            port: INFERENCE_SERVER_PORT,
+            path: '/health',
+            method: 'GET',
+            timeout: 2000,
+        },
+        (res) => {
+            let body = '';
+            res.on('data', (chunk) => { body += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(body);
+                    resolve(json.status === 'ok');
+                } catch {
+                    resolve(res.statusCode === 200);
+                }
+            });
+        },
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end();
+});
+
+/**
+ * Start the Python inference server (predict.py --serve).
+ * The server loads the model once, runs a warmup prediction, then listens on
+ * INFERENCE_SERVER_PORT. The returned promise resolves when the server signals
+ * readiness (prints a JSON {"event":"server_ready"} line to stdout).
+ *
+ * If the server is already starting or ready, the same promise is returned.
+ */
+export const startInferenceServer = () => {
+    if (_inferenceServerReadyPromise) return _inferenceServerReadyPromise;
+
+    const readiness = getPetVisionReadiness();
+    if (!readiness.ready) {
+        const reason = readiness.unavailableReason;
+        _inferenceServerState = 'failed';
+        return Promise.reject(
+            new PetVisionUnavailableError(reason.code, reason.message, {
+                modelPath: readiness.modelPath,
+                labelsPath: readiness.labelsPath,
+            }),
+        );
+    }
+
+    _inferenceServerState = 'starting';
+
+    _inferenceServerReadyPromise = new Promise((resolve, reject) => {
+        const { pythonBin, modelPath, labelsPath } = readiness;
+        const scriptPath = path.resolve(backendRoot, 'ml', 'predict.py');
+        const args = [
+            scriptPath,
+            '--serve',
+            '--host', INFERENCE_SERVER_HOST,
+            '--port', String(INFERENCE_SERVER_PORT),
+            '--model', modelPath,
+            '--labels', labelsPath,
+        ];
+
+        console.info('[PetVision:server] Starting inference server…', {
+            pythonBin,
+            port: INFERENCE_SERVER_PORT,
+            modelPath,
+            labelsPath,
+        });
+
+        const child = spawn(pythonBin, args, {
+            env: {
+                ...process.env,
+                PYTHONIOENCODING: 'utf-8',
+                TF_CPP_MIN_LOG_LEVEL: process.env.TF_CPP_MIN_LOG_LEVEL || '2',
+            },
+            shell: false,
+            windowsHide: true,
+        });
+
+        _inferenceServerProcess = child;
+        let settled = false;
+        let stdoutBuffer = '';
+
+        // Startup timeout: 3 minutes (model loading + warmup can be slow)
+        const STARTUP_TIMEOUT_MS = Number(process.env.PET_VISION_SERVER_STARTUP_TIMEOUT_MS) || 180000;
+        const startupTimeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            _inferenceServerState = 'failed';
+            child.kill('SIGKILL');
+            reject(new Error('INFERENCE_SERVER_STARTUP_TIMEOUT'));
+        }, STARTUP_TIMEOUT_MS);
+
+        child.stdout.on('data', (chunk) => {
+            stdoutBuffer += chunk.toString();
+            // Parse newline-delimited JSON lines from stdout
+            const lines = stdoutBuffer.split('\n');
+            stdoutBuffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                    const msg = JSON.parse(trimmed);
+                    if (msg.event === 'server_ready' && !settled) {
+                        settled = true;
+                        clearTimeout(startupTimeout);
+                        _inferenceServerState = 'ready';
+                        console.info('[PetVision:server] Inference server ready.', {
+                            port: msg.port,
+                            classCount: msg.classCount,
+                        });
+                        resolve({ port: msg.port, host: msg.host, classCount: msg.classCount });
+                    }
+                } catch {
+                    // Not JSON — log and continue
+                    console.info('[PetVision:server:stdout]', trimmed);
+                }
+            }
+        });
+
+        child.stderr.on('data', (chunk) => {
+            const text = chunk.toString().trim();
+            if (text) console.info('[PetVision:server:stderr]', text);
+        });
+
+        child.on('error', (error) => {
+            if (!settled) {
+                settled = true;
+                clearTimeout(startupTimeout);
+                _inferenceServerState = 'failed';
+                _inferenceServerReadyPromise = null;
+                _inferenceServerProcess = null;
+                reject(error);
+            } else {
+                console.error('[PetVision:server] Process error after startup:', error.message);
+                _inferenceServerState = 'failed';
+                _inferenceServerProcess = null;
+                _inferenceServerReadyPromise = null;
+            }
+        });
+
+        child.on('close', (code) => {
+            if (!settled) {
+                settled = true;
+                clearTimeout(startupTimeout);
+                _inferenceServerState = 'failed';
+                _inferenceServerReadyPromise = null;
+                _inferenceServerProcess = null;
+                reject(new Error(`INFERENCE_SERVER_EXITED_CODE_${code ?? 'null'}`));
+            } else {
+                console.warn(`[PetVision:server] Inference server exited (code ${code}). Restarting on next request.`);
+                _inferenceServerState = 'stopped';
+                _inferenceServerProcess = null;
+                _inferenceServerReadyPromise = null;
+            }
+        });
+    });
+
+    return _inferenceServerReadyPromise;
+};
+
+/**
+ * Ensure the inference server is running and healthy.
+ * If not started, starts it. If started but unhealthy, resets and restarts.
+ * Returns a promise that resolves when ready.
+ */
+export const ensureInferenceServerReady = async () => {
+    if (_inferenceServerState === 'ready') {
+        const healthy = await probeInferenceServerHealth();
+        if (healthy) return getInferenceServerState();
+        // Server process died without triggering 'close' event — reset
+        console.warn('[PetVision:server] Health check failed; resetting and restarting server.');
+        _inferenceServerState = 'stopped';
+        _inferenceServerProcess = null;
+        _inferenceServerReadyPromise = null;
+    }
+
+    return startInferenceServer();
 };

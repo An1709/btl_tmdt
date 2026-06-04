@@ -107,10 +107,6 @@ const formatProductLine = (product: PetVisionSuggestedProduct, index: number) =>
 
 const buildVisionReply = (result: PetVisionResponse) => {
     const predictionName = result.prediction.displayName || result.prediction.label;
-    const alternatives = result.prediction.topK
-        .slice(1, 3)
-        .map((item) => item.displayName || item.label)
-        .filter(Boolean);
     const productLines = result.suggestedProducts.slice(0, 3).map(formatProductLine);
     const parts = [
         `Mình đoán đây là ${predictionName} với độ tin cậy khoảng ${confidencePercent(result.prediction)}.`,
@@ -120,14 +116,12 @@ const buildVisionReply = (result: PetVisionResponse) => {
         parts.push(result.warning || "Mình chưa đủ chắc chắn về giống thú cưng này. Bạn có thể thử ảnh rõ hơn.");
     }
 
-    if (alternatives.length > 0) {
-        parts.push(`Khả năng khác: ${alternatives.join(", ")}.`);
-    }
-
     if (productLines.length > 0) {
-        parts.push(`Sản phẩm phù hợp:\n${productLines.join("\n")}`);
+        parts.push(result.recommendationNote
+            ? `${result.recommendationNote}\n${productLines.join("\n")}`
+            : `Sản phẩm phù hợp:\n${productLines.join("\n")}`);
     } else {
-        parts.push("Hiện tại chưa có sản phẩm gợi ý phù hợp.");
+        parts.push(result.recommendationNote || "Hiện tại chưa có sản phẩm gợi ý phù hợp.");
     }
 
     return parts.join("\n\n");

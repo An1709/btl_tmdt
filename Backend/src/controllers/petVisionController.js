@@ -1,7 +1,7 @@
 import {
     cleanupPetVisionImage,
     getPetVisionThreshold,
-    getSuggestedProductsForSpecies,
+    getSuggestedProductsForPrediction,
     runPetVisionInference,
 } from '../services/petVisionService.js';
 import { PetVisionUnavailableError } from '../services/petVisionRuntime.js';
@@ -88,7 +88,10 @@ export const predictPet = async (req, res) => {
         const confidenceThreshold = getPetVisionThreshold();
         const rawPrediction = await runPetVisionInference(uploadedPath);
         const prediction = normalizeApiPrediction(rawPrediction, confidenceThreshold);
-        const suggestedProducts = await getSuggestedProductsForSpecies(prediction.species, 3);
+        const {
+            products: suggestedProducts,
+            recommendationNote,
+        } = await getSuggestedProductsForPrediction(prediction, 3);
         const message = prediction.isLowConfidence
             ? 'Mình chưa đủ chắc chắn về giống thú cưng này. Bạn có thể thử ảnh rõ hơn.'
             : 'Nhận diện thành công.';
@@ -100,6 +103,7 @@ export const predictPet = async (req, res) => {
             message,
             warning: prediction.isLowConfidence ? message : undefined,
             suggestedProducts,
+            recommendationNote,
         });
     } catch (error) {
         console.error('[PetVision] Prediction failed:', {

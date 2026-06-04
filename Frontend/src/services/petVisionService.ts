@@ -36,6 +36,7 @@ export interface PetVisionResponse {
     confidenceThreshold?: number;
     message?: string;
     warning?: string;
+    recommendationNote?: string;
 }
 
 export const petVisionService = {

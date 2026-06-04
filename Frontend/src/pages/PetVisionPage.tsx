@@ -223,27 +223,6 @@ const PetVisionPage = () => {
                                         {result.warning || "Mình chưa đủ chắc chắn về giống thú cưng này. Bạn có thể thử ảnh rõ hơn."}
                                     </p>
                                 )}
-
-                                {result.prediction.topK.length > 0 && (
-                                    <div>
-                                        <h3 className="font-bold text-foreground">Top 3 dự đoán</h3>
-                                        <div className="mt-3 space-y-2">
-                                            {result.prediction.topK.slice(0, 3).map((item, index) => (
-                                                <div
-                                                    key={`${item.label}-${index}`}
-                                                    className="flex items-center justify-between rounded-lg bg-muted/20 px-3 py-2 text-sm"
-                                                >
-                                                    <span className="font-semibold text-foreground">
-                                                        {index + 1}. {item.displayName || item.label}
-                                                    </span>
-                                                    <span className="text-muted-foreground">
-                                                        {confidencePercent(item.confidence, item.confidencePercent)}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </aside>
@@ -267,6 +246,12 @@ const PetVisionPage = () => {
                                 Xem thêm
                             </Link>
                         </div>
+
+                        {result.recommendationNote && (
+                            <p className="mb-4 rounded-lg bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                                {result.recommendationNote}
+                            </p>
+                        )}
 
                         {result.suggestedProducts.length === 0 ? (
                             <p className="rounded-lg bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">

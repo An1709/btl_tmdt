@@ -1,41 +1,78 @@
-import { useState, type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
+import { Link } from "react-router";
+import { Star } from "lucide-react";
+import type { ProductReview } from "@/types/product";
 import { productService } from "@/services/productService";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
-import { Link } from "react-router";
-import type { ProductReview } from "@/types/product";
+import UserAvatar from "@/components/common/UserAvatar";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/feedback-state";
+import { FormField } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
+import { formatDate } from "@/utils/format";
 
 interface ProductReviewsProps {
     productId: string;
     reviews?: ProductReview[];
     averageRating?: number;
+    reviewCount?: number;
     onReviewAdded?: () => void;
 }
 
-const StarPicker = ({ rating, onChange }: { rating: number; onChange: (r: number) => void }) => {
-    const [hover, setHover] = useState(0);
+const RatingStars = ({ rating, size = "sm" }: { rating: number; size?: "sm" | "md" }) => (
+    <span aria-hidden="true" className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+            <Star
+                key={star}
+                className={`${size === "md" ? "size-5" : "size-4"} ${star <= Math.round(rating) ? "text-warning" : "text-border-strong"}`}
+                fill="currentColor"
+            />
+        ))}
+    </span>
+);
+
+const StarPicker = ({ rating, onChange, disabled = false }: { rating: number; onChange: (rating: number) => void; disabled?: boolean }) => {
+    const [previewRating, setPreviewRating] = useState(0);
+    const visibleRating = previewRating || rating;
+
     return (
-        <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map((s) => (
+        <div role="radiogroup" aria-label="Số sao đánh giá" className="flex w-fit items-center gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
                 <button
-                    key={s}
+                    key={star}
                     type="button"
-                    onMouseEnter={() => setHover(s)}
-                    onMouseLeave={() => setHover(0)}
-                    onClick={() => onChange(s)}
-                    className="text-2xl transition-transform hover:scale-110"
-                    aria-label={`${s} sao`}
+                    role="radio"
+                    aria-checked={rating === star}
+                    aria-label={`${star} sao`}
+                    disabled={disabled}
+                    onMouseEnter={() => setPreviewRating(star)}
+                    onMouseLeave={() => setPreviewRating(0)}
+                    onFocus={() => setPreviewRating(star)}
+                    onBlur={() => setPreviewRating(0)}
+                    onClick={() => onChange(star)}
+                    className="flex size-11 items-center justify-center rounded-md text-border-strong transition-colors hover:bg-warning-subtle hover:text-warning focus-visible:text-warning disabled:pointer-events-none disabled:opacity-50"
                 >
-                    {s <= (hover || rating) ? "⭐" : "☆"}
+                    <Star aria-hidden="true" className="size-6" fill={star <= visibleRating ? "currentColor" : "none"} />
                 </button>
             ))}
         </div>
     );
 };
 
-const getErrorMessage = (err: unknown, fallback: string) => {
-    if (err && typeof err === "object" && "response" in err) {
-        return (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? fallback;
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error && typeof error === "object" && "response" in error) {
+        const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+        if (!message) return fallback;
+
+        const normalized = message.toLowerCase();
+        if (normalized.includes("already reviewed")) return "Bạn đã đánh giá sản phẩm này rồi.";
+        if (normalized.includes("chi co the danh gia") || normalized.includes("only review")) {
+            return "Bạn chỉ có thể đánh giá sản phẩm đã mua và được giao thành công.";
+        }
+        if (normalized.includes("comment is required")) return "Vui lòng nhập nội dung đánh giá.";
+        if (normalized.includes("rating")) return "Vui lòng chọn số sao từ 1 đến 5.";
+        return message;
     }
 
     return fallback;
@@ -45,26 +82,34 @@ const ProductReviews = ({
     productId,
     reviews = [],
     averageRating = 0,
+    reviewCount,
     onReviewAdded,
 }: ProductReviewsProps) => {
     const { user } = useAuthStore();
     const [rating, setRating] = useState(5);
     const [comment, setComment] = useState("");
+    const [commentError, setCommentError] = useState("");
+    const [formError, setFormError] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const totalReviewCount = reviewCount ?? reviews.length;
+    const hasReviewed = Boolean(user && reviews.some((review) => review.user?._id === user._id));
 
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: FormEvent) => {
+        event.preventDefault();
+        if (submitting) return;
 
+        setFormError("");
         if (rating < 1 || rating > 5) {
-            toast.error("Vui lòng chọn số sao từ 1 đến 5.");
+            setFormError("Vui lòng chọn số sao từ 1 đến 5.");
             return;
         }
 
         if (!comment.trim()) {
-            toast.error("Vui lòng nhập nội dung đánh giá.");
+            setCommentError("Vui lòng nhập nội dung đánh giá.");
             return;
         }
 
+        setCommentError("");
         setSubmitting(true);
         try {
             await productService.submitReview(productId, { rating, comment: comment.trim() });
@@ -72,104 +117,141 @@ const ProductReviews = ({
             setComment("");
             setRating(5);
             onReviewAdded?.();
-        } catch (err: unknown) {
-            toast.error(getErrorMessage(err, "Không thể gửi đánh giá. Vui lòng thử lại."));
+        } catch (error: unknown) {
+            const message = getErrorMessage(error, "Không thể gửi đánh giá. Vui lòng thử lại.");
+            setFormError(message);
+            toast.error(message);
         } finally {
             setSubmitting(false);
         }
     };
 
-    const breakdown = [5, 4, 3, 2, 1].map((star) => ({
-        star,
-        count: reviews.filter((r) => r.rating === star).length,
-        pct: reviews.length ? (reviews.filter((r) => r.rating === star).length / reviews.length) * 100 : 0,
-    }));
+    const breakdown = [5, 4, 3, 2, 1].map((star) => {
+        const count = reviews.filter((review) => review.rating === star).length;
+        return { star, count, percentage: reviews.length ? (count / reviews.length) * 100 : 0 };
+    });
 
     return (
-        <section className="mt-12">
-            <h2 className="section-title mb-6">⭐ Đánh giá ({reviews.length})</h2>
-
-            {reviews.length > 0 && (
-                <div className="flex gap-8 p-5 bg-white dark:bg-card rounded-2xl border border-border mb-8">
-                    <div className="text-center">
-                        <p className="text-5xl font-black text-[var(--pet-coral)]">{averageRating.toFixed(1)}</p>
-                        <div className="flex gap-0.5 justify-center mt-1">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                                <svg key={s} className={`w-4 h-4 ${s <= Math.round(averageRating) ? "text-amber-400" : "text-gray-200"}`} fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                </svg>
-                            ))}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">{reviews.length} đánh giá</p>
-                    </div>
-                    <div className="flex-1 flex flex-col gap-1.5">
-                        {breakdown.map(({ star, pct, count }) => (
-                            <div key={star} className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground w-6 text-right">{star}★</span>
-                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                    <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                                </div>
-                                <span className="text-muted-foreground w-5">{count}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div className="flex flex-col gap-4 mb-8">
-                {reviews.map((r) => {
-                    const reviewerName = r.user?.displayName || r.user?.username || "Người dùng";
-
-                    return (
-                        <div key={r._id} className="p-4 bg-white dark:bg-card rounded-2xl border border-border">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--pet-coral)] to-[var(--pet-mint)] flex items-center justify-center text-white text-sm font-bold">
-                                    {reviewerName[0]}
-                                </div>
-                                <div>
-                                    <p className="text-sm font-bold text-foreground">{reviewerName}</p>
-                                    <div className="flex">
-                                        {[1, 2, 3, 4, 5].map((s) => (
-                                            <span key={s} className="text-xs">{s <= r.rating ? "⭐" : ""}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-sm text-foreground leading-relaxed">{r.comment}</p>
-                        </div>
-                    );
-                })}
+        <section className="mt-14 border-t border-divider pt-10" aria-labelledby="reviews-heading">
+            <div className="mb-6">
+                <h2 id="reviews-heading" className="section-title">Đánh giá sản phẩm</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Ý kiến từ khách hàng đã mua và nhận sản phẩm.</p>
             </div>
 
-            {user ? (
-                <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
-                    <h3 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>Viết đánh giá của bạn</h3>
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                        <div>
-                            <p className="text-sm text-muted-foreground mb-1">Số sao</p>
-                            <StarPicker rating={rating} onChange={setRating} />
-                        </div>
-                        <textarea
-                            value={comment}
-                            onChange={(e) => setComment(e.target.value)}
-                            placeholder="Chia sẻ trải nghiệm của bạn về sản phẩm..."
-                            rows={3}
-                            className="w-full px-4 py-3 rounded-2xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all resize-none placeholder:text-muted-foreground"
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+                <div className="min-w-0">
+                    {reviews.length > 0 ? (
+                        <>
+                            <div className="mb-8 grid gap-6 rounded-lg bg-surface-subtle p-5 sm:grid-cols-[10rem_1fr] sm:items-center sm:p-6">
+                                <div>
+                                    <p className="text-3xl font-bold text-text-strong">{averageRating.toFixed(1)}<span className="text-base font-medium text-muted-foreground">/5</span></p>
+                                    <div className="mt-2" aria-label={`${averageRating.toFixed(1)} trên 5 sao`}>
+                                        <RatingStars rating={averageRating} size="md" />
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">{totalReviewCount} đánh giá</p>
+                                </div>
+
+                                <div className="flex flex-col gap-2.5" aria-label="Phân bố đánh giá theo số sao">
+                                    {breakdown.map(({ star, count, percentage }) => (
+                                        <div key={star} className="grid grid-cols-[2.25rem_1fr_2rem] items-center gap-2 text-sm">
+                                            <span className="text-right text-muted-foreground">{star}★</span>
+                                            <div
+                                                role="progressbar"
+                                                aria-label={`${star} sao: ${count} đánh giá`}
+                                                aria-valuemin={0}
+                                                aria-valuemax={reviews.length}
+                                                aria-valuenow={count}
+                                                className="h-2 overflow-hidden rounded-full bg-muted"
+                                            >
+                                                <div className="h-full rounded-full bg-warning" style={{ width: `${percentage}%` }} />
+                                            </div>
+                                            <span className="text-muted-foreground">{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="divide-y divide-divider">
+                                {reviews.map((review) => {
+                                    const reviewerName = review.user?.displayName || review.user?.username || "Người dùng";
+                                    return (
+                                        <article key={review._id} className="py-5 first:pt-0">
+                                            <div className="flex items-start gap-3">
+                                                <UserAvatar user={review.user} className="size-10" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                                        <div>
+                                                            <h3 className="text-sm font-semibold text-text-strong">{reviewerName}</h3>
+                                                            <div className="mt-1" aria-label={`${review.rating} trên 5 sao`}>
+                                                                <RatingStars rating={review.rating} />
+                                                            </div>
+                                                        </div>
+                                                        {review.createdAt && (
+                                                            <time dateTime={review.createdAt} className="shrink-0 text-xs text-muted-foreground">
+                                                                {formatDate(review.createdAt)}
+                                                            </time>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-3 max-w-prose whitespace-pre-line break-words text-sm leading-6 text-foreground">{review.comment}</p>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <EmptyState
+                            title="Chưa có đánh giá"
+                            description="Hãy là người đầu tiên chia sẻ trải nghiệm sau khi đơn hàng được giao thành công."
+                            className="rounded-lg bg-surface-subtle"
                         />
-                        <div className="flex justify-end">
-                            <button type="submit" disabled={submitting || !comment.trim()} className="btn-pet-primary disabled:opacity-50">
-                                {submitting ? "Đang gửi..." : "Gửi đánh giá"}
-                            </button>
-                        </div>
-                    </form>
+                    )}
                 </div>
-            ) : (
-                <div className="text-center p-6 bg-muted/30 rounded-2xl border border-dashed border-border">
-                    <p className="text-sm text-muted-foreground">
-                        <Link to="/signin" className="text-[var(--pet-coral)] font-semibold hover:underline">Đăng nhập</Link> để gửi đánh giá.
-                    </p>
-                </div>
-            )}
+
+                <aside className="rounded-lg border border-border bg-surface-elevated p-5 lg:sticky lg:top-24" aria-label="Gửi đánh giá">
+                    <h3 className="text-lg font-semibold text-text-strong">Đánh giá của bạn</h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Chỉ khách hàng đã nhận sản phẩm mới có thể gửi một đánh giá.</p>
+
+                    {user && !hasReviewed ? (
+                        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-5" noValidate>
+                            <fieldset disabled={submitting}>
+                                <legend className="mb-2 text-sm font-medium text-text-strong">Mức độ hài lòng</legend>
+                                <StarPicker rating={rating} onChange={setRating} disabled={submitting} />
+                            </fieldset>
+
+                            <FormField label="Nội dung đánh giá" required error={commentError}>
+                                {(controlProps) => (
+                                    <Textarea
+                                        {...controlProps}
+                                        value={comment}
+                                        onChange={(event) => {
+                                            setComment(event.target.value);
+                                            if (commentError && event.target.value.trim()) setCommentError("");
+                                        }}
+                                        placeholder="Chia sẻ trải nghiệm thực tế của bạn về sản phẩm..."
+                                        rows={5}
+                                        disabled={submitting}
+                                        className="resize-y"
+                                    />
+                                )}
+                            </FormField>
+
+                            {formError && <p role="alert" className="rounded-md bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">{formError}</p>}
+
+                            <Button type="submit" loading={submitting} disabled={!comment.trim()} className="w-full">
+                                Gửi đánh giá
+                            </Button>
+                        </form>
+                    ) : hasReviewed ? (
+                        <p className="mt-5 rounded-md bg-success-subtle px-3 py-3 text-sm text-success-subtle-foreground">Bạn đã đánh giá sản phẩm này.</p>
+                    ) : (
+                        <Button asChild variant="outline" className="mt-5 w-full">
+                            <Link to="/signin">Đăng nhập để đánh giá</Link>
+                        </Button>
+                    )}
+                </aside>
+            </div>
         </section>
     );
 };

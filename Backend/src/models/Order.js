@@ -21,6 +21,12 @@ const orderSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Product'
     }],
+    checkoutRequestId: {
+        type: String,
+        trim: true,
+        minlength: 16,
+        maxlength: 128
+    },
     shippingAddress: {
         fullName: { type: String, trim: true },
         address: { type: String, required: true },
@@ -58,6 +64,17 @@ const orderSchema = new mongoose.Schema({
     },
     loyaltyAwardedAt: {
         type: Date
+    },
+    inventoryReservationActive: {
+        type: Boolean,
+        default: false
+    },
+    inventoryReleasedAt: {
+        type: Date
+    },
+    couponUsageCounted: {
+        type: Boolean,
+        default: false
     },
     status: { 
         type: String, 
@@ -116,5 +133,13 @@ const orderSchema = new mongoose.Schema({
     coupon: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' }
 
 }, { timestamps: true });
+
+orderSchema.index(
+    { user: 1, checkoutRequestId: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { checkoutRequestId: { $type: 'string' } },
+    },
+);
 
 export default mongoose.model("Order", orderSchema);

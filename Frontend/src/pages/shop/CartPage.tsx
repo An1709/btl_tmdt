@@ -1,12 +1,17 @@
-import { Link } from "react-router";
 import { useMemo, useState } from "react";
+import { LoaderCircle, ShoppingBag, Trash2 } from "lucide-react";
+import { Link } from "react-router";
+import { toast } from "sonner";
 import { useCartStore } from "@/stores/useCartStore";
 import CartItemComponent from "@/components/features/cart/CartItem";
 import CartSummary from "@/components/features/cart/CartSummary";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/feedback-state";
 
 const CartPage = () => {
-    const { items, clearCart, currentUserId } = useCartStore();
+    const { items, clearCart, currentUserId, loading } = useCartStore();
+    const [clearing, setClearing] = useState(false);
     const [selectionState, setSelectionState] = useState<{ userId: string | null; productIds: string[] }>({
         userId: currentUserId,
         productIds: [],
@@ -28,13 +33,18 @@ const CartPage = () => {
     const selectedCount = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
     const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
     const allSelected = items.length > 0 && validSelectedProductIds.length === items.length;
+    const someSelected = validSelectedProductIds.length > 0 && !allSelected;
 
     const handleClearCart = async () => {
+        if (clearing) return;
+        setClearing(true);
         try {
             await clearCart();
             setSelectionState({ userId: currentUserId, productIds: [] });
         } catch {
             toast.error("Không thể xóa giỏ hàng. Vui lòng thử lại.");
+        } finally {
+            setClearing(false);
         }
     };
 
@@ -58,47 +68,75 @@ const CartPage = () => {
         setSelectionState({ userId: currentUserId, productIds: selected ? cartProductIds : [] });
     };
 
+    if (loading && items.length === 0) {
+        return (
+            <section className="page-container flex min-h-[28rem] items-center justify-center" role="status" aria-live="polite">
+                <h1 className="sr-only">Giỏ hàng</h1>
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <LoaderCircle aria-hidden="true" className="size-5 animate-spin" />
+                    Đang tải giỏ hàng…
+                </div>
+            </section>
+        );
+    }
+
     if (items.length === 0) {
         return (
-            <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-                <div className="text-6xl mb-4">🛒</div>
-                <h1 className="section-title mb-2">Giỏ hàng trống</h1>
-                <p className="text-muted-foreground text-sm mb-6">Chưa có sản phẩm nào trong giỏ hàng.</p>
-                <Link to="/shop" className="btn-pet-primary inline-flex">🛍️ Khám phá ngay</Link>
-            </div>
+            <section className="page-container py-16 sm:py-24">
+                <h1 className="sr-only">Giỏ hàng</h1>
+                <EmptyState
+                    icon={<ShoppingBag className="size-7" />}
+                    title="Giỏ hàng đang trống"
+                    description="Khám phá sản phẩm phù hợp và thêm vào giỏ để bắt đầu đặt hàng."
+                    action={(
+                        <Button asChild>
+                            <Link to="/shop">Khám phá sản phẩm</Link>
+                        </Button>
+                    )}
+                />
+            </section>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex items-center justify-between mb-6">
-                <h1 className="section-title">🛒 Giỏ Hàng ({items.length})</h1>
-                <button
-                    onClick={handleClearCart}
-                    className="text-sm text-muted-foreground hover:text-red-500 transition-colors underline underline-offset-2"
+        <section className="page-container py-8 sm:py-10">
+            <header className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <p className="text-sm font-semibold text-primary">Giỏ hàng của bạn</p>
+                    <h1 className="mt-1 text-3xl font-bold tracking-tight text-text-strong">Kiểm tra sản phẩm trước khi thanh toán</h1>
+                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                        Chỉ những sản phẩm bạn chọn mới được chuyển sang bước thanh toán.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { void handleClearCart(); }}
+                    loading={clearing}
+                    className="self-start text-destructive hover:bg-destructive-subtle hover:text-destructive sm:self-auto"
                 >
+                    <Trash2 aria-hidden="true" />
                     Xóa tất cả
-                </button>
-            </div>
+                </Button>
+            </header>
 
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-white dark:bg-card px-4 py-3 shadow-sm">
-                <label className="flex items-center gap-2 text-sm font-semibold text-foreground cursor-pointer">
-                    <input
-                        type="checkbox"
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 shadow-elevation-1">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold text-text-strong">
+                    <Checkbox
                         checked={allSelected}
+                        aria-checked={someSelected ? "mixed" : allSelected}
                         onChange={(event) => toggleAll(event.target.checked)}
-                        className="w-4 h-4 accent-[var(--pet-coral)]"
                     />
-                    Chọn tất cả
+                    Chọn tất cả {items.length} mặt hàng
                 </label>
-                <span className="text-sm text-muted-foreground">
-                    Đã chọn <strong className="text-[var(--pet-coral)]">{selectedCount}</strong> sản phẩm
-                </span>
+                <p className="text-sm text-muted-foreground" aria-live="polite">
+                    Đã chọn <strong className="text-text-strong">{selectedCount}</strong> sản phẩm
+                </p>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-6">
-                {/* Items list */}
-                <div className="flex-1 flex flex-col gap-4">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+                <section className="flex min-w-0 flex-col gap-4" aria-label="Sản phẩm trong giỏ hàng">
                     {items.map((item) => (
                         <CartItemComponent
                             key={item.product.id}
@@ -107,18 +145,15 @@ const CartPage = () => {
                             onSelectChange={toggleItem}
                         />
                     ))}
-                </div>
+                </section>
 
-                {/* Summary */}
-                <div className="w-full lg:w-80 shrink-0">
-                    <CartSummary
-                        subtotal={selectedSubtotal}
-                        count={selectedCount}
-                        selectedProductIds={validSelectedProductIds}
-                    />
-                </div>
+                <CartSummary
+                    subtotal={selectedSubtotal}
+                    count={selectedCount}
+                    selectedProductIds={validSelectedProductIds}
+                />
             </div>
-        </div>
+        </section>
     );
 };
 

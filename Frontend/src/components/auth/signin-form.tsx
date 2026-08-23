@@ -1,14 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { FormField } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { AuthFormAlert, PasswordInput } from "@/components/auth/auth-form-support";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Label } from "../ui/label";
-import { useNavigate } from "react-router";
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { IMAGE_ASSETS } from "@/utils/constants";
 
 const signInSchema = z.object({
   username: z.string().min(3, "Tên đăng nhập phải có ít nhất 3 ký tự"),
@@ -17,9 +17,25 @@ const signInSchema = z.object({
 
 type SignInFormValues = z.infer<typeof signInSchema>;
 
+interface SignInLocationState {
+  from?: string;
+  routeState?: unknown;
+}
+
+const getSafeReturnPath = (state: SignInLocationState | null) => {
+  const returnPath = state?.from;
+  return typeof returnPath === "string"
+    && returnPath.startsWith("/")
+    && !returnPath.startsWith("//")
+    ? returnPath
+    : null;
+};
+
 export function SigninForm({ className, ...props }: React.ComponentProps<"div">) {
   const { signIn } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [serverError, setServerError] = useState("");
   const {
     register,
     handleSubmit,
@@ -30,95 +46,105 @@ export function SigninForm({ className, ...props }: React.ComponentProps<"div">)
 
   const onSubmit = async (data: SignInFormValues) => {
     const { username, password } = data;
+    setServerError("");
+
     try {
       await signIn(username, password);
       const currentUser = useAuthStore.getState().user;
-      if (currentUser?.role === "admin" || currentUser?.role === "staff") {
+      const returnState = location.state as SignInLocationState | null;
+      const returnPath = getSafeReturnPath(returnState);
+
+      if (returnPath) {
+        navigate(returnPath, { replace: true, state: returnState?.routeState });
+      } else if (currentUser?.role === "admin" || currentUser?.role === "staff") {
         navigate("/admin");
       } else {
         navigate("/");
       }
     } catch (error) {
-      const authError = (error as { response?: { data?: { code?: string; email?: string } } }).response?.data;
+      const authError = (error as {
+        response?: { data?: { code?: string; email?: string; message?: unknown } };
+      }).response?.data;
+
       if (authError?.code === "EMAIL_NOT_VERIFIED" && authError.email) {
-        navigate(`/verify-email?email=${encodeURIComponent(authError.email)}`);
+        const normalizedEmail = authError.email.toLowerCase();
+        sessionStorage.setItem("registrationOtpEmail", normalizedEmail);
+        sessionStorage.setItem(`registrationOtpExpiresAt:${normalizedEmail}`, String(new Date().getTime()));
+        navigate(`/verify-email?email=${encodeURIComponent(authError.email)}`, {
+          state: location.state,
+        });
+        return;
       }
+
+      setServerError(
+        typeof authError?.message === "string"
+          ? authError.message
+          : "Không thể đăng nhập. Vui lòng kiểm tra thông tin và thử lại."
+      );
     }
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="overflow-hidden p-0 border-border">
-        <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" onSubmit={handleSubmit(onSubmit)}>
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col items-center text-center gap-2">
-                <a href="/" className="mx-auto block w-fit text-center">
-                  <img src={IMAGE_ASSETS.logo} alt="logo" />
-                </a>
+    <section
+      className={cn("rounded-lg border border-border bg-surface-elevated p-6 shadow-elevation-2 sm:p-8", className)}
+      aria-labelledby="signin-heading"
+      {...props}
+    >
+      <header>
+        <p className="text-sm font-semibold text-primary">Tài khoản PetMart</p>
+        <h1 id="signin-heading" className="mt-2 font-heading text-2xl font-bold tracking-tight text-text-strong sm:text-3xl">
+          Chào mừng bạn quay lại
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Đăng nhập để tiếp tục mua sắm và quản lý đơn hàng của bạn.
+        </p>
+      </header>
 
-                <h1 className="text-2xl font-bold">Chào mừng bạn quay lại!</h1>
-                <p className="text-muted-foreground text-balance">
-                  Đăng nhập vào tài khoản của bạn
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="username" className="block text-sm">
-                  Tên đăng nhập
-                </Label>
-                <Input
-                  type="text"
-                  id="username"
-                  placeholder="username"
-                  {...register("username")}
-                />
-                {errors.username && (
-                  <p className="text-destructive text-sm">{errors.username.message}</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="password" className="block text-sm">
-                  Mật khẩu
-                </Label>
-                <Input type="password" id="password" {...register("password")} />
-                {errors.password && (
-                  <p className="text-destructive text-sm">{errors.password.message}</p>
-                )}
-              </div>
-
-              <div className="text-right text-sm">
-                <a href="/forgot-password" className="underline underline-offset-4">
-                  Quên mật khẩu?
-                </a>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                Đăng nhập
-              </Button>
-
-              <div className="text-center text-sm">
-                Chưa có tài khoản?{" "}
-                <a href="/signup" className="underline underline-offset-4">
-                  Đăng ký
-                </a>
-              </div>
-            </div>
-          </form>
-          <div className="bg-muted relative hidden md:block">
-            <img
-              src={IMAGE_ASSETS.placeholder}
-              alt="Image"
-              className="absolute top-1/2 -translate-y-1/2 object-cover"
+      <form className="mt-7 space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <FormField label="Tên đăng nhập" error={errors.username?.message} required>
+          {(controlProps) => (
+            <Input
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="Nhập tên đăng nhập"
+              {...controlProps}
+              {...register("username")}
             />
-          </div>
-        </CardContent>
-      </Card>
-      <div className=" text-xs text-balance px-6 text-center *:[a]:hover:text-primary text-muted-foreground *:[a]:underline *:[a]:underline-offetset-4">
-        Bằng cách tiếp tục, bạn đồng ý với <a href="#">Điều khoản dịch vụ</a> và{" "}
-        <a href="#">Chính sách bảo mật</a> của chúng tôi.
-      </div>
-    </div>
+          )}
+        </FormField>
+
+        <FormField label="Mật khẩu" error={errors.password?.message} required>
+          {(controlProps) => (
+            <PasswordInput
+              autoComplete="current-password"
+              placeholder="Nhập mật khẩu"
+              {...controlProps}
+              {...register("password")}
+            />
+          )}
+        </FormField>
+
+        <div className="flex justify-end">
+          <Link to="/forgot-password" className="rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45">
+            Quên mật khẩu?
+          </Link>
+        </div>
+
+        <AuthFormAlert message={serverError} />
+
+        <Button type="submit" className="w-full" loading={isSubmitting}>
+          Đăng nhập
+        </Button>
+      </form>
+
+      <p className="mt-6 border-t border-divider pt-5 text-center text-sm text-muted-foreground">
+        Chưa có tài khoản?{" "}
+        <Link to="/signup" className="rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45">
+          Đăng ký
+        </Link>
+      </p>
+    </section>
   );
 }

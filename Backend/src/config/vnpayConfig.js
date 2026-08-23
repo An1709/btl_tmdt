@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 /* Cấu hình VNPAY */
 const vnpayConfig = {
     vnp_TmnCode: process.env.VNP_TMN_CODE, // Mã website của bạn tại VNPAY

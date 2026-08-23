@@ -1,9 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
+import { Plus, Search } from "lucide-react";
 import { productService, type ProductPayload } from "@/services/productService";
 import { categoryService, type DbCategory } from "@/services/categoryService";
 import type { Product } from "@/types/product";
-import DataTable, { type Column } from "@/components/features/admin/DataTable";
+import DataTable, { DataTableActionGroup, DataTableConfirmAction, type Column } from "@/components/features/admin/DataTable";
+import { AdminPageHeader, AdminPanel } from "@/components/features/admin/AdminSurface";
 import Pagination from "@/components/common/Pagination";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/utils/format";
 import { IMAGE_ASSETS } from "@/utils/constants";
 import { toast } from "sonner";
@@ -34,6 +42,7 @@ const ProductManagePage = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<DbCategory[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [formOpen, setFormOpen] = useState(false);
@@ -47,6 +56,7 @@ const ProductManagePage = () => {
 
     const loadProducts = useCallback(async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             const res = await productService.getAll({
                 page,
@@ -57,7 +67,7 @@ const ProductManagePage = () => {
             setTotalPages(res.totalPages);
             setTotalProducts(res.total);
         } catch {
-            toast.error("Không thể tải danh sách sản phẩm.");
+            setLoadError("Không thể tải danh sách sản phẩm. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }
@@ -80,12 +90,12 @@ const ProductManagePage = () => {
         loadCategories();
     }, [loadCategories]);
 
-    const categoryLabel = (product: Product) => {
+    const categoryLabel = useCallback((product: Product) => {
         const match = categories.find(
             (category) => category._id === product.categoryId || category.slug === product.category || category.name === product.category,
         );
         return match?.name ?? product.category;
-    };
+    }, [categories]);
 
     const openCreateForm = () => {
         setEditingProduct(null);
@@ -112,6 +122,7 @@ const ProductManagePage = () => {
     };
 
     const closeForm = () => {
+        if (saving) return;
         setFormOpen(false);
         setEditingProduct(null);
         setForm(emptyForm);
@@ -151,7 +162,7 @@ const ProductManagePage = () => {
         };
     };
 
-    const handleSubmit = async (event: React.FormEvent) => {
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const payload = buildPayload();
         if (!payload) return;
@@ -161,16 +172,19 @@ const ProductManagePage = () => {
             if (editingProduct) {
                 await productService.update(editingProduct.id, payload);
                 toast.success("Đã cập nhật sản phẩm.");
-                void loadProducts();
+                await loadProducts();
             } else {
                 await productService.create(payload);
                 toast.success("Đã thêm sản phẩm.");
+                const queryWillReset = page !== 1 || searchTerm !== "";
                 setPage(1);
                 setSearchTerm("");
                 setSearchQuery("");
-                void loadProducts();
+                if (!queryWillReset) await loadProducts();
             }
-            closeForm();
+            setFormOpen(false);
+            setEditingProduct(null);
+            setForm(emptyForm);
         } catch (err: unknown) {
             const message =
                 err && typeof err === "object" && "response" in err
@@ -183,140 +197,105 @@ const ProductManagePage = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Bạn có chắc muốn xóa sản phẩm này?")) return;
         try {
             await productService.delete(id);
             toast.success("Đã xóa sản phẩm.");
-            void loadProducts();
+            await loadProducts();
+            return true;
         } catch {
             toast.error("Xóa thất bại. Vui lòng thử lại.");
+            return false;
         }
     };
 
-    const columns: Column<Product>[] = [
+    const stockError = form.stock.trim() !== "" && (!Number.isInteger(Number(form.stock)) || Number(form.stock) < 0)
+        ? "Tồn kho phải là số nguyên không âm."
+        : undefined;
+    const priceError = form.price.trim() !== "" && (!Number.isFinite(Number(form.price)) || Number(form.price) < 0)
+        ? "Giá sản phẩm không hợp lệ."
+        : undefined;
+    const firstImage = form.image.split(",").map((image) => image.trim()).find(Boolean);
+
+    const columns: Column<Product>[] = useMemo(() => [
         {
             key: "product", header: "Sản phẩm", render: (p) => (
-                <div className="flex items-center gap-3">
-                    <img src={p.image || IMAGE_ASSETS.placeholder} alt={p.name} className="w-10 h-10 rounded-xl object-cover border border-border" />
-                    <div>
-                        <p className="text-sm font-semibold text-foreground line-clamp-1">{p.name}</p>
-                        <p className="text-xs text-muted-foreground">{p.breed}</p>
+                <div className="flex min-w-56 items-center gap-3">
+                    <img src={p.image || IMAGE_ASSETS.placeholder} alt="" className="size-11 rounded-md border border-border object-cover" />
+                    <div className="min-w-0">
+                        <p className="line-clamp-1 text-sm font-semibold text-text-strong">{p.name}</p>
+                        {p.breed && <p className="line-clamp-1 text-xs text-muted-foreground">{p.breed}</p>}
                     </div>
                 </div>
             )
         },
-        { key: "category", header: "Loại", render: (p) => <span className="badge-new capitalize">{categoryLabel(p)}</span> },
-        { key: "price", header: "Giá", render: (p) => <span className="font-bold text-[var(--pet-coral)]">{formatCurrency(p.price)}</span> },
-        { key: "rating", header: "Đánh giá", render: (p) => <span className="text-sm text-foreground">{p.rating.toFixed(1)} ({p.reviewCount})</span> },
+        { key: "category", header: "Danh mục", render: (p) => <Badge tone="neutral" className="capitalize">{categoryLabel(p)}</Badge> },
+        { key: "price", header: "Giá", render: (p) => <span className="font-semibold text-primary">{formatCurrency(p.price)}</span> },
+        { key: "rating", header: "Đánh giá", hideOnMobile: true, render: (p) => <span>{p.rating.toFixed(1)} ({p.reviewCount})</span> },
         {
-            key: "stock", header: "Tồn kho", render: (p) => (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.inStock ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
-                    {p.stock ?? 0}
-                </span>
-            )
+            key: "stock", header: "Tồn kho", render: (p) => <Badge tone={p.inStock ? "success" : "error"}>{p.stock ?? 0} · {p.inStock ? "Còn hàng" : "Hết hàng"}</Badge>
         },
-    ];
+    ], [categoryLabel]);
+
+    const runSearch = () => {
+        setSearchTerm(searchQuery.trim());
+        setPage(1);
+    };
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="section-title">
-                    Quản Lý Sản Phẩm ({loading ? "..." : totalProducts})
-                </h1>
-                <button onClick={openCreateForm} className="btn-pet-primary">+ Thêm sản phẩm</button>
-            </div>
+            <AdminPageHeader
+                title={`Quản lý sản phẩm${loading ? "" : ` (${totalProducts})`}`}
+                description="Theo dõi danh mục, giá và tồn kho; các thay đổi được áp dụng theo dữ liệu sản phẩm hiện có."
+                actions={<Button type="button" onClick={openCreateForm}><Plus aria-hidden="true" />Thêm sản phẩm</Button>}
+            />
 
-            {/* Search box matching web app aesthetics */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                <div className="relative w-full sm:max-w-md">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm sản phẩm theo tên..."
+            <AdminPanel title="Tìm sản phẩm" description="Tìm theo tên để giữ nguyên kết quả và phân trang hiện tại.">
+                <div className="flex w-full flex-col gap-2 sm:max-w-xl sm:flex-row">
+                    <Input
+                        type="search"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                                setSearchTerm(searchQuery.trim());
-                                setPage(1);
-                            }
-                        }}
-                        className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-border bg-white dark:bg-card text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all shadow-sm"
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }}
+                        placeholder="Tìm kiếm sản phẩm theo tên"
+                        aria-label="Tìm kiếm sản phẩm theo tên"
                     />
-                    <button
-                        onClick={() => {
-                            setSearchTerm(searchQuery.trim());
-                            setPage(1);
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-[var(--pet-coral)] text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-all"
-                    >
-                        Tìm
-                    </button>
+                    <Button type="button" variant="outline" onClick={runSearch}><Search aria-hidden="true" />Tìm</Button>
                 </div>
-            </div>
+            </AdminPanel>
 
             {formOpen && (
-                <div className="bg-white dark:bg-card rounded-2xl border border-border p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                        <h2 className="font-bold text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                            {editingProduct ? "Sửa sản phẩm" : "Thêm sản phẩm"}
-                        </h2>
-                        <button onClick={closeForm} className="text-xs px-3 py-1.5 bg-muted rounded-lg font-semibold">
-                            Đóng
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="Tên sản phẩm *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-                        <select className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                            <option value="">Chọn danh mục *</option>
-                            {categories.map((category) => (
-                                <option key={category._id} value={category._id}>{category.name}</option>
-                            ))}
-                        </select>
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" type="number" min="0" placeholder="Giá *" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} />
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" type="number" min="0" step="1" placeholder="Tồn kho *" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} />
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="Giống" value={form.breed} onChange={(e) => setForm((f) => ({ ...f, breed: e.target.value }))} />
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="Tuổi" value={form.age} onChange={(e) => setForm((f) => ({ ...f, age: e.target.value }))} />
-                        <input className="md:col-span-2 px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="URL ảnh, cách nhau bằng dấu phẩy" value={form.image} onChange={(e) => setForm((f) => ({ ...f, image: e.target.value }))} />
-                        <textarea className="md:col-span-2 px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm resize-none" rows={3} placeholder="Mô tả *" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
-                        <div className="md:col-span-2 flex justify-end gap-2">
-                            <button type="button" onClick={closeForm} className="btn-pet-secondary">Hủy</button>
-                            <button type="submit" disabled={saving} className="btn-pet-primary disabled:opacity-50">
-                                {saving ? "Đang lưu..." : editingProduct ? "Cập nhật" : "Tạo sản phẩm"}
-                            </button>
-                        </div>
+                <AdminPanel
+                    title={editingProduct ? "Chỉnh sửa sản phẩm" : "Thêm sản phẩm"}
+                    description="Các trường có dấu * là bắt buộc. Giá và tồn kho tiếp tục dùng cùng các quy tắc xác thực hiện có."
+                    action={<Button type="button" variant="ghost" size="sm" onClick={closeForm} disabled={saving}>Đóng</Button>}
+                >
+                    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <FormField label="Tên sản phẩm" required>{(controlProps) => <Input {...controlProps} data-autofocus value={form.name} onChange={(event) => setForm((previous) => ({ ...previous, name: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField label="Danh mục" required>{(controlProps) => <Select {...controlProps} value={form.category} onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))} disabled={saving}><option value="">Chọn danh mục</option>{categories.map((category) => <option key={category._id} value={category._id}>{category.name}</option>)}</Select>}</FormField>
+                        <FormField label="Giá" required error={priceError} description="Nhập giá trị từ 0 trở lên.">{(controlProps) => <Input {...controlProps} type="number" min="0" inputMode="decimal" value={form.price} onChange={(event) => setForm((previous) => ({ ...previous, price: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField label="Tồn kho" required error={stockError} description="Chỉ chấp nhận số nguyên từ 0 trở lên.">{(controlProps) => <Input {...controlProps} type="number" min="0" step="1" inputMode="numeric" value={form.stock} onChange={(event) => setForm((previous) => ({ ...previous, stock: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField label="Giống">{(controlProps) => <Input {...controlProps} value={form.breed} onChange={(event) => setForm((previous) => ({ ...previous, breed: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField label="Tuổi">{(controlProps) => <Input {...controlProps} value={form.age} onChange={(event) => setForm((previous) => ({ ...previous, age: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField className="md:col-span-2" label="URL ảnh" description="Có thể nhập nhiều URL, cách nhau bằng dấu phẩy; danh sách ảnh hiện tại vẫn được gửi theo đúng payload cũ.">{(controlProps) => <Input {...controlProps} value={form.image} onChange={(event) => setForm((previous) => ({ ...previous, image: event.target.value }))} placeholder="https://…" disabled={saving} />}</FormField>
+                        {firstImage && <img src={firstImage} alt="Xem trước ảnh sản phẩm" className="h-40 w-40 rounded-md border border-border object-cover" />}
+                        <FormField className="md:col-span-2" label="Mô tả" required>{(controlProps) => <Textarea {...controlProps} rows={5} value={form.description} onChange={(event) => setForm((previous) => ({ ...previous, description: event.target.value }))} disabled={saving} />}</FormField>
+                        <div className="flex flex-col-reverse justify-end gap-2 border-t border-divider pt-5 sm:col-span-2 sm:flex-row"><Button type="button" variant="outline" onClick={closeForm} disabled={saving}>Hủy</Button><Button type="submit" loading={saving}>{editingProduct ? "Cập nhật sản phẩm" : "Tạo sản phẩm"}</Button></div>
                     </form>
-                </div>
+                </AdminPanel>
             )}
 
-            {loading ? (
-                <div className="animate-pulse flex flex-col gap-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="h-14 bg-muted rounded-xl" />
-                    ))}
-                </div>
-            ) : (
-                <>
-                    <DataTable
-                        columns={columns}
-                        data={products}
-                        keyExtractor={(p) => p.id}
-                        emptyText="Không có sản phẩm nào."
-                        actions={(p) => (
-                            <div className="flex gap-2 justify-end">
-                                <button onClick={() => openEditForm(p)} className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold">Sửa</button>
-                                <button onClick={() => handleDelete(p.id)} className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold">Xóa</button>
-                            </div>
-                        )}
-                    />
-                    <Pagination
-                        page={page}
-                        totalPages={totalPages}
-                        onChange={setPage}
-                    />
-                </>
-            )}
+            <DataTable
+                columns={columns}
+                data={products}
+                keyExtractor={(product) => product.id}
+                isLoading={loading}
+                error={loadError ? { description: loadError, action: <Button type="button" variant="outline" size="sm" onClick={() => void loadProducts()}>Thử lại</Button> } : null}
+                emptyTitle="Chưa có sản phẩm"
+                emptyText="Thêm sản phẩm đầu tiên hoặc điều chỉnh cụm từ tìm kiếm."
+                tableLabel="Danh sách sản phẩm"
+                actions={(product) => <DataTableActionGroup><Button type="button" variant="outline" size="sm" onClick={() => openEditForm(product)}>Sửa</Button><DataTableConfirmAction label="Xóa" title="Xóa sản phẩm" description={`Bạn sắp xóa “${product.name}”. Hành động này không thể hoàn tác.`} confirmLabel="Xóa sản phẩm" onConfirm={() => handleDelete(product.id)} /></DataTableActionGroup>}
+            />
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
     );
 };

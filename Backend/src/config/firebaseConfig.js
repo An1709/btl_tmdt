@@ -1,7 +1,4 @@
 import admin from 'firebase-admin';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 /* Cách: Dùng biến môi trường (Bảo mật cho Production) */
 const serviceAccount = {

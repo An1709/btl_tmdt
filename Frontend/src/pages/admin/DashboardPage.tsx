@@ -1,448 +1,257 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clock3, DollarSign, Package, RefreshCw, UserPlus, Warehouse, XCircle } from "lucide-react";
+
+import { AdminPageHeader, AdminPanel } from "@/components/features/admin/AdminSurface";
+import DataTable, { type Column } from "@/components/features/admin/DataTable";
 import StatCard from "@/components/features/admin/StatCard";
-import { adminDashboardService, type AdminDashboardStats } from "@/services/adminDashboardService";
+import { SkeletonBlock } from "@/components/common/Loading";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState, ErrorState } from "@/components/ui/feedback-state";
+import {
+  adminDashboardService,
+  type AdminDashboardStats,
+  type LowStockProduct,
+  type RecentDashboardOrder,
+  type TopSellingProduct,
+} from "@/services/adminDashboardService";
 import { couponService } from "@/services/couponService";
 import type { Coupon } from "@/types/coupon";
-import { formatCurrency, formatDate } from "@/utils/format";
 import { ORDER_STATUS_LABELS } from "@/utils/constants";
+import { formatCurrency, formatDate } from "@/utils/format";
 
-const STATUS_COLORS: Record<string, string> = {
-    Pending: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-    Processing: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-    Shipping: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
-    Delivered: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    Cancelled: "bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300",
-    CancelRequested: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
+type BadgeTone = "neutral" | "success" | "warning" | "error" | "info" | "pending" | "disabled";
+
+const getOrderStatusTone = (status: string): BadgeTone => {
+  if (status === "Delivered") return "success";
+  if (status === "Cancelled") return "error";
+  if (status === "CancelRequested") return "warning";
+  if (status === "Processing" || status === "Shipping") return "info";
+  return "pending";
 };
 
-const STATUS_BADGE_BASE =
-    "inline-flex min-w-[96px] items-center justify-center rounded-full px-3 py-1 text-xs font-bold leading-none whitespace-nowrap";
+const getCouponStatus = (coupon: Coupon): { label: string; tone: BadgeTone } => {
+  const endDate = coupon.endDate ?? coupon.expirationDate;
+  const isExpired = endDate ? new Date(endDate).getTime() < Date.now() : false;
+  const isUsageEnded = coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit;
 
-const SectionCard = ({ title, children }: { title: string; children: ReactNode }) => (
-    <section className="bg-white dark:bg-card rounded-2xl border border-border p-5 shadow-sm">
-        <h2 className="font-bold text-foreground mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>
-            {title}
-        </h2>
-        {children}
-    </section>
-);
-
-const EmptyState = ({ text }: { text: string }) => (
-    <div className="py-8 text-center text-sm text-muted-foreground">{text}</div>
-);
-
-const MiniBar = ({ value, max }: { value: number; max: number }) => {
-    const width = max > 0 ? Math.max((value / max) * 100, value > 0 ? 6 : 0) : 0;
-
-    return (
-        <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div
-                className="h-full rounded-full bg-[var(--pet-coral)] transition-all"
-                style={{ width: `${width}%` }}
-            />
-        </div>
-    );
+  if (isExpired) return { label: "Hết hạn", tone: "error" };
+  if (isUsageEnded) return { label: "Hết lượt", tone: "warning" };
+  if (coupon.isActive === false) return { label: "Tạm tắt", tone: "disabled" };
+  return { label: "Đang hoạt động", tone: "success" };
 };
 
 const formatCouponValue = (coupon: Coupon) => {
-    const value = coupon.discountValue ?? coupon.value ?? 0;
-    return coupon.discountType === "percent" ? `${value}%` : formatCurrency(value);
+  const value = coupon.discountValue ?? coupon.value ?? 0;
+  return coupon.discountType === "percent" ? `${value}%` : formatCurrency(value);
 };
 
-const getCouponStatus = (coupon: Coupon) => {
-    const endDate = coupon.endDate ?? coupon.expirationDate;
-    const isExpired = endDate ? new Date(endDate).getTime() < Date.now() : false;
-    const isUsageEnded = coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit;
+function MiniBar({ value, max, label }: { value: number; max: number; label: string }) {
+  const width = max > 0 ? Math.max((value / max) * 100, value > 0 ? 6 : 0) : 0;
 
-    if (isExpired) {
-        return {
-            label: "Hết hạn",
-            className: "bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300",
-        };
-    }
+  return (
+    <div
+      className="h-2 overflow-hidden rounded-full bg-surface-subtle"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+    >
+      <div className="h-full rounded-full bg-primary transition-[width] duration-base ease-standard" style={{ width: `${width}%` }} />
+    </div>
+  );
+}
 
-    if (isUsageEnded) {
-        return {
-            label: "Hết lượt",
-            className: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
-        };
-    }
+function DashboardLoading() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Đang tải dữ liệu tổng quan">
+      <div className="space-y-3 border-b border-divider pb-5"><SkeletonBlock className="h-8 w-64" /><SkeletonBlock className="h-5 w-full max-w-xl" /></div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <SkeletonBlock key={index} className="h-36 rounded-lg" />)}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-3">
+        {Array.from({ length: 3 }, (_, index) => <SkeletonBlock key={index} className="h-80 rounded-lg" />)}
+      </div>
+    </div>
+  );
+}
 
-    if (coupon.isActive === false) {
-        return {
-            label: "Tạm tắt",
-            className: "bg-muted text-muted-foreground",
-        };
-    }
+const topSellingColumns: Column<TopSellingProduct>[] = [
+  { key: "name", header: "Sản phẩm", render: (product) => <span className="font-medium text-text-strong">{product.name}</span> },
+  { key: "sold", header: "Đã bán", hideOnMobile: true, render: (product) => <span>{product.soldQuantity}</span> },
+  { key: "revenue", header: "Doanh thu", headerClassName: "text-right", cellClassName: "text-right font-semibold text-primary", render: (product) => formatCurrency(product.revenue) },
+];
 
-    return {
-        label: "Đang hoạt động",
-        className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    };
-};
+const lowStockColumns: Column<LowStockProduct>[] = [
+  { key: "name", header: "Sản phẩm", render: (product) => <span className="font-medium text-text-strong">{product.name}</span> },
+  { key: "category", header: "Danh mục", hideOnMobile: true, render: (product) => product.category?.name || product.category?.slug || "—" },
+  { key: "stock", header: "Tồn kho", headerClassName: "text-right", cellClassName: "text-right", render: (product) => <Badge tone="warning">{product.stock}</Badge> },
+];
+
+const recentOrderColumns: Column<RecentDashboardOrder>[] = [
+  { key: "code", header: "Mã đơn", render: (order) => <span className="font-mono text-xs font-semibold text-text-strong">{order.orderCode}</span> },
+  {
+    key: "customer",
+    header: "Khách hàng",
+    render: (order) => <div className="min-w-40"><p className="font-medium text-text-strong">{order.customer.name}</p>{order.customer.email && <p className="truncate text-xs text-muted-foreground">{order.customer.email}</p>}</div>,
+  },
+  { key: "total", header: "Tổng tiền", headerClassName: "text-right", cellClassName: "text-right font-semibold text-primary whitespace-nowrap", render: (order) => formatCurrency(order.totalAmount) },
+  { key: "payment", header: "Thanh toán", hideOnMobile: true, render: (order) => order.paymentMethod },
+  { key: "status", header: "Trạng thái", render: (order) => <Badge tone={getOrderStatusTone(order.status)}>{ORDER_STATUS_LABELS[order.status] ?? order.status}</Badge> },
+  { key: "date", header: "Ngày", hideOnMobile: true, render: (order) => <span className="whitespace-nowrap">{formatDate(order.createdAt)}</span> },
+];
+
+const couponColumns: Column<Coupon>[] = [
+  { key: "code", header: "Mã", render: (coupon) => <span className="font-mono text-xs font-semibold text-text-strong">{coupon.code}</span> },
+  { key: "discount", header: "Giá trị", render: (coupon) => <span className="font-semibold text-primary">{formatCouponValue(coupon)}</span> },
+  { key: "usage", header: "Đã dùng", hideOnMobile: true, render: (coupon) => `${coupon.usedCount}/${coupon.usageLimit > 0 ? coupon.usageLimit : "∞"}` },
+  { key: "expiry", header: "Hạn dùng", hideOnMobile: true, render: (coupon) => formatDate(coupon.endDate ?? coupon.expirationDate) },
+  { key: "status", header: "Trạng thái", render: (coupon) => { const status = getCouponStatus(coupon); return <Badge tone={status.tone}>{status.label}</Badge>; } },
+];
 
 const DashboardPage = () => {
-    const [stats, setStats] = useState<AdminDashboardStats | null>(null);
-    const [coupons, setCoupons] = useState<Coupon[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [couponsLoading, setCouponsLoading] = useState(true);
-    const [couponsError, setCouponsError] = useState("");
+  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [couponsLoading, setCouponsLoading] = useState(true);
+  const [couponsError, setCouponsError] = useState("");
 
-    const loadStats = useCallback(() => {
-        setLoading(true);
-        setError("");
+  const loadStats = useCallback(() => {
+    setLoading(true);
+    setError("");
+    adminDashboardService.getStats()
+      .then(setStats)
+      .catch(() => {
+        setStats(null);
+        setError("Không thể tải dữ liệu thống kê. Vui lòng thử lại.");
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-        adminDashboardService.getStats()
-            .then((data) => setStats(data))
-            .catch(() => {
-                setStats(null);
-                setError("Không thể tải dữ liệu thống kê. Vui lòng thử lại.");
-            })
-            .finally(() => setLoading(false));
-    }, []);
+  const loadCoupons = useCallback(() => {
+    setCouponsLoading(true);
+    setCouponsError("");
+    couponService.getAllCoupons(8)
+      .then(setCoupons)
+      .catch(() => {
+        setCoupons([]);
+        setCouponsError("Không thể tải danh sách mã giảm giá. Vui lòng thử lại.");
+      })
+      .finally(() => setCouponsLoading(false));
+  }, []);
 
-    const loadCoupons = useCallback(() => {
-        setCouponsLoading(true);
-        setCouponsError("");
+  useEffect(() => {
+    void Promise.resolve().then(loadStats);
+    void Promise.resolve().then(loadCoupons);
+  }, [loadCoupons, loadStats]);
 
-        couponService.getAllCoupons(8)
-            .then((data) => setCoupons(data))
-            .catch(() => {
-                setCoupons([]);
-                setCouponsError("Không thể tải danh sách mã giảm giá. Vui lòng thử lại.");
-            })
-            .finally(() => setCouponsLoading(false));
-    }, []);
+  const maxRevenue = useMemo(() => Math.max(...(stats?.revenueChart.map((item) => item.revenue) ?? [0]), 0), [stats]);
+  const maxStatusCount = useMemo(() => Math.max(...(stats?.orderStatusStats.map((item) => item.count) ?? [0]), 0), [stats]);
+  const maxPaymentCount = useMemo(() => Math.max(...(stats?.paymentMethodStats.map((item) => item.count) ?? [0]), 0), [stats]);
 
-    useEffect(() => {
-        void Promise.resolve().then(loadStats);
-        void Promise.resolve().then(loadCoupons);
-    }, [loadCoupons, loadStats]);
+  if (loading) return <DashboardLoading />;
 
-    const maxRevenue = useMemo(
-        () => Math.max(...(stats?.revenueChart.map((item) => item.revenue) ?? [0]), 0),
-        [stats],
-    );
-    const maxStatusCount = useMemo(
-        () => Math.max(...(stats?.orderStatusStats.map((item) => item.count) ?? [0]), 0),
-        [stats],
-    );
-    const maxPaymentCount = useMemo(
-        () => Math.max(...(stats?.paymentMethodStats.map((item) => item.count) ?? [0]), 0),
-        [stats],
-    );
-
-    if (loading) {
-        return (
-            <div className="flex flex-col gap-6">
-                <h1 className="section-title">Tổng quan kinh doanh</h1>
-                <div className="bg-white dark:bg-card rounded-2xl border border-border p-8 text-center text-muted-foreground">
-                    Đang tải thống kê...
-                </div>
-            </div>
-        );
-    }
-
-    if (error || !stats) {
-        return (
-            <div className="flex flex-col gap-6">
-                <h1 className="section-title">Tổng quan kinh doanh</h1>
-                <div className="bg-white dark:bg-card rounded-2xl border border-border p-8 text-center">
-                    <p className="text-sm text-muted-foreground mb-4">
-                        {error || "Không thể tải dữ liệu thống kê. Vui lòng thử lại."}
-                    </p>
-                    <button type="button" onClick={loadStats} className="btn-pet-primary inline-flex">
-                        Tải lại
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
+  if (error || !stats) {
     return (
-        <div className="flex flex-col gap-6">
-            <div className="flex items-end justify-between gap-3 flex-wrap">
-                <div>
-                    <h1 className="section-title">Tổng quan kinh doanh</h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Theo dõi doanh thu, đơn hàng, kho hàng và khách hàng của PetMart.
-                    </p>
-                </div>
-                <button type="button" onClick={loadStats} className="btn-pet-secondary text-sm">
-                    Làm mới
-                </button>
-            </div>
-
-            <section>
-                <h2 className="font-bold text-foreground mb-3" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                    Tổng quan
-                </h2>
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                    <StatCard label="Doanh thu hợp lệ" value={formatCurrency(stats.overview.totalRevenue)} icon="₫" color="coral" />
-                    <StatCard label="Tổng đơn hàng" value={stats.overview.totalOrders} icon="ĐH" color="mint" />
-                    <StatCard label="Người dùng" value={stats.overview.totalUsers} icon="KH" color="amber" />
-                    <StatCard label="Sản phẩm" value={stats.overview.totalProducts} icon="SP" color="purple" />
-                    <StatCard label="Chờ xác nhận" value={stats.overview.pendingOrders} icon="CX" color="amber" />
-                    <StatCard label="Đã hủy" value={stats.overview.cancelledOrders} icon="H" color="coral" />
-                    <StatCard label="Sắp hết hàng" value={stats.overview.lowStockProducts} icon="TK" color="purple" />
-                    <StatCard label="Người dùng mới 30 ngày" value={stats.overview.newUsers} icon="M" color="mint" />
-                </div>
-            </section>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <SectionCard title="Doanh thu">
-                    {stats.revenueChart.length === 0 ? (
-                        <EmptyState text="Chưa có dữ liệu doanh thu." />
-                    ) : (
-                        <div className="flex items-end gap-1 h-64 border-b border-border px-1">
-                            {stats.revenueChart.map((item) => {
-                                const height = maxRevenue > 0 ? Math.max((item.revenue / maxRevenue) * 100, item.revenue > 0 ? 4 : 0) : 0;
-
-                                return (
-                                    <div key={item.date} className="flex-1 h-full flex items-end group relative">
-                                        <div
-                                            className="w-full rounded-t-lg bg-[var(--pet-coral)]/80 group-hover:bg-[var(--pet-coral)] transition-all"
-                                            style={{ height: `${height}%` }}
-                                        />
-                                        <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block min-w-40 rounded-xl bg-foreground text-background text-xs px-3 py-2 shadow-lg z-10">
-                                            <p className="font-bold">{formatDate(item.date)}</p>
-                                            <p>{formatCurrency(item.revenue)}</p>
-                                            <p>{item.orders} đơn đã giao</p>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-3">
-                        Doanh thu 30 ngày gần nhất, chỉ tính đơn đã giao hợp lệ.
-                    </p>
-                </SectionCard>
-
-                <SectionCard title="Trạng thái đơn hàng">
-                    {stats.orderStatusStats.length === 0 ? (
-                        <EmptyState text="Chưa có đơn hàng." />
-                    ) : (
-                        <div className="space-y-4">
-                            {stats.orderStatusStats.map((item) => (
-                                <div key={item.status} className="space-y-1.5">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="font-semibold text-foreground">{item.label}</span>
-                                        <span className="text-muted-foreground">{item.count}</span>
-                                    </div>
-                                    <MiniBar value={item.count} max={maxStatusCount} />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </SectionCard>
-
-                <SectionCard title="Phương thức thanh toán">
-                    {stats.paymentMethodStats.length === 0 ? (
-                        <EmptyState text="Chưa có dữ liệu thanh toán." />
-                    ) : (
-                        <div className="space-y-4">
-                            {stats.paymentMethodStats.map((item) => (
-                                <div key={item.method} className="rounded-xl border border-border p-3">
-                                    <div className="flex justify-between text-sm mb-2">
-                                        <span className="font-bold text-foreground">{item.method}</span>
-                                        <span className="text-muted-foreground">{item.count} đơn</span>
-                                    </div>
-                                    <MiniBar value={item.count} max={maxPaymentCount} />
-                                    <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                                        <span>{item.paidOrders} đơn tính doanh thu</span>
-                                        <span>{formatCurrency(item.revenue)}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </SectionCard>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <SectionCard title="Sản phẩm bán chạy">
-                    {stats.topSellingProducts.length === 0 ? (
-                        <EmptyState text="Chưa có sản phẩm bán chạy." />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border text-left">
-                                        {["Sản phẩm", "Đã bán", "Doanh thu"].map((header) => (
-                                            <th key={header} className="pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">
-                                                {header}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {stats.topSellingProducts.map((product) => (
-                                        <tr key={product.productId || product.name} className="border-b border-border/50 last:border-b-0">
-                                            <td className="py-3 pr-4 font-semibold text-foreground">{product.name}</td>
-                                            <td className="py-3 pr-4 text-muted-foreground">{product.soldQuantity}</td>
-                                            <td className="py-3 pr-4 font-bold text-[var(--pet-coral)]">{formatCurrency(product.revenue)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </SectionCard>
-
-                <SectionCard title="Sản phẩm sắp hết hàng">
-                    {stats.lowStockProducts.length === 0 ? (
-                        <EmptyState text="Không có sản phẩm sắp hết hàng." />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border text-left">
-                                        {["Sản phẩm", "Danh mục", "Tồn kho"].map((header) => (
-                                            <th key={header} className="pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">
-                                                {header}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {stats.lowStockProducts.map((product) => (
-                                        <tr key={product.id} className="border-b border-border/50 last:border-b-0">
-                                            <td className="py-3 pr-4 font-semibold text-foreground">{product.name}</td>
-                                            <td className="py-3 pr-4 text-muted-foreground">{product.category?.name || product.category?.slug || "-"}</td>
-                                            <td className="py-3 pr-4">
-                                                <span className="text-xs font-bold px-2 py-1 rounded-lg bg-red-100 text-red-600">
-                                                    {product.stock}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </SectionCard>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <SectionCard title="Đơn hàng gần đây">
-                    {stats.recentOrders.length === 0 ? (
-                        <EmptyState text="Chưa có đơn hàng gần đây." />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[900px] table-auto text-sm">
-                                <thead>
-                                    <tr className="border-b border-border text-left">
-                                        <th className="w-28 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Mã đơn</th>
-                                        <th className="min-w-48 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Khách hàng</th>
-                                        <th className="w-32 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Tổng tiền</th>
-                                        <th className="w-28 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Thanh toán</th>
-                                        <th className="w-36 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Trạng thái</th>
-                                        <th className="w-28 pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">Ngày</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {stats.recentOrders.map((order) => (
-                                        <tr key={order.id} className="border-b border-border/50 last:border-b-0">
-                                            <td className="py-3 pr-4 font-mono text-xs font-semibold text-foreground whitespace-nowrap">{order.orderCode}</td>
-                                            <td className="py-3 pr-4">
-                                                <p className="font-semibold text-foreground">{order.customer.name}</p>
-                                                {order.customer.email && <p className="text-xs text-muted-foreground">{order.customer.email}</p>}
-                                            </td>
-                                            <td className="py-3 pr-4 font-bold text-[var(--pet-coral)] whitespace-nowrap">{formatCurrency(order.totalAmount)}</td>
-                                            <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">{order.paymentMethod}</td>
-                                            <td className="py-3 pr-4">
-                                                <span className={`${STATUS_BADGE_BASE} ${STATUS_COLORS[order.status] ?? "bg-muted text-muted-foreground"}`}>
-                                                    {ORDER_STATUS_LABELS[order.status] ?? order.status}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">{formatDate(order.createdAt)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </SectionCard>
-
-                <SectionCard title="Mã giảm giá">
-                    {couponsLoading ? (
-                        <EmptyState text="Đang tải mã giảm giá..." />
-                    ) : couponsError ? (
-                        <EmptyState text={couponsError} />
-                    ) : coupons.length === 0 ? (
-                        <EmptyState text="Chưa có mã giảm giá nào." />
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[720px] text-sm">
-                                <thead>
-                                    <tr className="border-b border-border text-left">
-                                        {["Mã", "Loại giảm", "Giá trị", "Số lượt dùng", "Hạn sử dụng", "Trạng thái"].map((header) => (
-                                            <th key={header} className="pb-3 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider">
-                                                {header}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {coupons.map((coupon) => {
-                                        const status = getCouponStatus(coupon);
-
-                                        return (
-                                            <tr key={coupon._id} className="border-b border-border/50 last:border-b-0">
-                                                <td className="py-3 pr-4">
-                                                    <span className="font-mono font-bold text-foreground">{coupon.code}</span>
-                                                </td>
-                                                <td className="py-3 pr-4 text-muted-foreground">
-                                                    {coupon.discountType === "percent" ? "Phần trăm" : "Số tiền"}
-                                                </td>
-                                                <td className="py-3 pr-4 font-bold text-[var(--pet-coral)] whitespace-nowrap">
-                                                    {formatCouponValue(coupon)}
-                                                </td>
-                                                <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">
-                                                    {coupon.usedCount}/{coupon.usageLimit > 0 ? coupon.usageLimit : "Không giới hạn"}
-                                                </td>
-                                                <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">
-                                                    {formatDate(coupon.endDate ?? coupon.expirationDate)}
-                                                </td>
-                                                <td className="py-3 pr-4">
-                                                    <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap ${status.className}`}>
-                                                        {status.label}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </SectionCard>
-
-                <SectionCard title="Khách hàng chi tiêu nhiều">
-                    {stats.bestCustomers.length === 0 ? (
-                        <EmptyState text="Chưa có dữ liệu khách hàng." />
-                    ) : (
-                        <div className="space-y-3">
-                            {stats.bestCustomers.map((customer, index) => (
-                                <div key={customer.userId || customer.email || index} className="flex items-center justify-between gap-4 rounded-xl border border-border p-3">
-                                    <div className="min-w-0">
-                                        <p className="font-bold text-foreground truncate">{index + 1}. {customer.name || "Khách hàng"}</p>
-                                        {customer.email && <p className="text-xs text-muted-foreground truncate">{customer.email}</p>}
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                        <p className="font-black text-[var(--pet-coral)]">{formatCurrency(customer.totalSpent)}</p>
-                                        <p className="text-xs text-muted-foreground">{customer.orderCount} đơn</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </SectionCard>
-            </div>
+      <div className="space-y-6">
+        <AdminPageHeader title="Tổng quan kinh doanh" description="Theo dõi doanh thu, đơn hàng, kho hàng và khách hàng của PetMart." />
+        <div className="rounded-lg border border-border bg-surface-elevated">
+          <ErrorState title="Chưa thể tải tổng quan" description={error || "Không thể tải dữ liệu thống kê. Vui lòng thử lại."} action={<Button type="button" onClick={loadStats}><RefreshCw aria-hidden="true" />Tải lại</Button>} />
         </div>
+      </div>
     );
+  }
+
+  const chartDates = stats.revenueChart;
+
+  return (
+    <div className="space-y-6">
+      <AdminPageHeader
+        title="Tổng quan kinh doanh"
+        description="Theo dõi các tín hiệu vận hành và kết quả bán hàng hiện có của PetMart."
+        actions={<Button type="button" variant="outline" onClick={loadStats}><RefreshCw aria-hidden="true" />Làm mới</Button>}
+      />
+
+      <section aria-labelledby="admin-primary-metrics">
+        <h2 id="admin-primary-metrics" className="mb-3 text-base font-semibold text-text-strong">Chỉ số chính</h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Doanh thu hợp lệ" value={formatCurrency(stats.overview.totalRevenue)} description="Đơn đã giao hợp lệ" icon={<DollarSign className="size-5" />} tone="primary" />
+          <StatCard label="Tổng đơn hàng" value={stats.overview.totalOrders} description={`${stats.overview.pendingOrders} đơn chờ xác nhận`} icon={<Package className="size-5" />} tone="secondary" />
+          <StatCard label="Chờ xác nhận" value={stats.overview.pendingOrders} description="Cần xử lý theo quy trình đơn hàng" icon={<Clock3 className="size-5" />} tone="warning" />
+          <StatCard label="Sắp hết hàng" value={stats.overview.lowStockProducts} description="Sản phẩm cần theo dõi tồn kho" icon={<Warehouse className="size-5" />} tone="destructive" />
+        </div>
+      </section>
+
+      <AdminPanel title="Theo dõi vận hành" description="Các chỉ số bổ sung không làm thay đổi định nghĩa metric hiện có.">
+        <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+          <div><dt className="text-sm text-muted-foreground">Người dùng</dt><dd className="mt-1 text-xl font-semibold text-text-strong">{stats.overview.totalUsers}</dd></div>
+          <div><dt className="text-sm text-muted-foreground">Sản phẩm</dt><dd className="mt-1 text-xl font-semibold text-text-strong">{stats.overview.totalProducts}</dd></div>
+          <div><dt className="text-sm text-muted-foreground">Đơn đã hủy</dt><dd className="mt-1 flex items-center gap-2 text-xl font-semibold text-text-strong"><XCircle className="size-4 text-destructive" aria-hidden="true" />{stats.overview.cancelledOrders}</dd></div>
+          <div><dt className="text-sm text-muted-foreground">Người dùng mới 30 ngày</dt><dd className="mt-1 flex items-center gap-2 text-xl font-semibold text-text-strong"><UserPlus className="size-4 text-secondary" aria-hidden="true" />{stats.overview.newUsers}</dd></div>
+        </dl>
+      </AdminPanel>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <AdminPanel title="Doanh thu" description="30 ngày gần nhất; chỉ tính đơn đã giao hợp lệ.">
+          {chartDates.length === 0 ? <EmptyState title="Chưa có dữ liệu doanh thu" description="Dữ liệu sẽ xuất hiện khi có đơn đã giao hợp lệ." /> : (
+            <>
+              <div className="h-56 border-b border-divider pb-2" role="img" aria-label="Biểu đồ doanh thu 30 ngày gần nhất">
+                <div className="flex h-full items-end gap-1" aria-hidden="true">
+                  {chartDates.map((item) => {
+                    const height = maxRevenue > 0 ? Math.max((item.revenue / maxRevenue) * 100, item.revenue > 0 ? 4 : 0) : 0;
+                    return <span key={item.date} title={`${formatDate(item.date)}: ${formatCurrency(item.revenue)}, ${item.orders} đơn đã giao`} className="group relative flex h-full flex-1 items-end"><span className="w-full rounded-t-sm bg-primary/80 transition-colors duration-fast group-hover:bg-primary" style={{ height: `${height}%` }} /></span>;
+                  })}
+                </div>
+              </div>
+              <div className="mt-2 flex justify-between gap-3 text-xs text-muted-foreground"><span>{formatDate(chartDates[0].date)}</span><span>{formatDate(chartDates[chartDates.length - 1].date)}</span></div>
+              <ul className="sr-only">{chartDates.map((item) => <li key={item.date}>{formatDate(item.date)}: {formatCurrency(item.revenue)}, {item.orders} đơn đã giao.</li>)}</ul>
+            </>
+          )}
+        </AdminPanel>
+
+        <AdminPanel title="Trạng thái đơn hàng" description="Phân bổ đơn theo trạng thái hiện tại.">
+          {stats.orderStatusStats.length === 0 ? <EmptyState title="Chưa có đơn hàng" description="Chưa có trạng thái đơn hàng để tổng hợp." /> : <div className="space-y-4">{stats.orderStatusStats.map((item) => <div key={item.status} className="space-y-2"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium text-text-strong">{item.label}</span><span className="text-muted-foreground">{item.count}</span></div><MiniBar value={item.count} max={maxStatusCount} label={`${item.label}: ${item.count} đơn`} /></div>)}</div>}
+        </AdminPanel>
+
+        <AdminPanel title="Phương thức thanh toán" description="Số đơn, đơn tính doanh thu và doanh thu theo phương thức.">
+          {stats.paymentMethodStats.length === 0 ? <EmptyState title="Chưa có dữ liệu thanh toán" description="Dữ liệu sẽ xuất hiện khi có đơn thanh toán." /> : <div className="space-y-5">{stats.paymentMethodStats.map((item) => <div key={item.method} className="space-y-2"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-text-strong">{item.method}</p><p className="mt-1 text-xs text-muted-foreground">{item.paidOrders} đơn tính doanh thu</p></div><div className="text-right"><p className="text-sm font-semibold text-primary">{formatCurrency(item.revenue)}</p><p className="mt-1 text-xs text-muted-foreground">{item.count} đơn</p></div></div><MiniBar value={item.count} max={maxPaymentCount} label={`${item.method}: ${item.count} đơn`} /></div>)}</div>}
+        </AdminPanel>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AdminPanel title="Sản phẩm bán chạy" description="Dựa trên số lượng đã bán và doanh thu ghi nhận.">
+          <DataTable columns={topSellingColumns} data={stats.topSellingProducts} keyExtractor={(product) => product.productId || product.name} emptyTitle="Chưa có sản phẩm bán chạy" emptyText="Dữ liệu sẽ xuất hiện khi có đơn hàng hợp lệ." tableLabel="Bảng sản phẩm bán chạy" />
+        </AdminPanel>
+        <AdminPanel title="Sản phẩm sắp hết hàng" description="Ưu tiên kiểm tra các mặt hàng có tồn kho thấp.">
+          <DataTable columns={lowStockColumns} data={stats.lowStockProducts} keyExtractor={(product) => product.id} emptyTitle="Không có sản phẩm sắp hết hàng" emptyText="Tồn kho hiện không có mặt hàng cần theo dõi." tableLabel="Bảng sản phẩm sắp hết hàng" />
+        </AdminPanel>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AdminPanel title="Đơn hàng gần đây" description="Các đơn mới nhất kèm trạng thái và phương thức thanh toán.">
+          <DataTable columns={recentOrderColumns} data={stats.recentOrders} keyExtractor={(order) => order.id} emptyTitle="Chưa có đơn hàng gần đây" emptyText="Đơn hàng mới sẽ xuất hiện ở đây." tableLabel="Bảng đơn hàng gần đây" />
+        </AdminPanel>
+        <AdminPanel title="Mã giảm giá" description="Tối đa 8 mã gần đây từ nguồn dữ liệu hiện có.">
+          <DataTable
+            columns={couponColumns}
+            data={coupons}
+            keyExtractor={(coupon) => coupon._id}
+            isLoading={couponsLoading}
+            error={couponsError ? { title: "Chưa thể tải mã giảm giá", description: couponsError, action: <Button type="button" variant="outline" onClick={loadCoupons}><RefreshCw aria-hidden="true" />Tải lại</Button> } : null}
+            emptyTitle="Chưa có mã giảm giá"
+            emptyText="Tạo mã giảm giá từ khu vực quản lý để bắt đầu."
+            tableLabel="Bảng mã giảm giá"
+          />
+        </AdminPanel>
+      </div>
+
+      <AdminPanel title="Khách hàng chi tiêu nhiều" description="Danh sách dựa trên dữ liệu chi tiêu và số đơn hiện có.">
+        {stats.bestCustomers.length === 0 ? <EmptyState title="Chưa có dữ liệu khách hàng" description="Dữ liệu sẽ xuất hiện khi có lịch sử đơn hàng." /> : <ol className="divide-y divide-divider">{stats.bestCustomers.map((customer, index) => <li key={customer.userId || customer.email || index} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"><div className="min-w-0"><p className="truncate font-medium text-text-strong">{index + 1}. {customer.name || "Khách hàng"}</p>{customer.email && <p className="mt-1 truncate text-sm text-muted-foreground">{customer.email}</p>}</div><div className="shrink-0 text-right"><p className="font-semibold text-primary">{formatCurrency(customer.totalSpent)}</p><p className="mt-1 text-xs text-muted-foreground">{customer.orderCount} đơn</p></div></li>)}</ol>}
+      </AdminPanel>
+    </div>
+  );
 };
 
 export default DashboardPage;

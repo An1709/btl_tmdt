@@ -47,43 +47,60 @@ export const useCartStore = create<CartStore>()((set, get) => ({
                 set({ items: [] });
             }
         } finally {
-            set({ loading: false });
+            if (get().currentUserId === userId) {
+                set({ loading: false });
+            }
         }
     },
 
     addItem: async (product: Product, quantity = 1) => {
         removeLegacyCartStorage();
+        const userId = get().currentUserId;
         const items = await cartService.addItem(product.id, quantity);
-        set({ items });
+        if (userId && get().currentUserId === userId) {
+            set({ items });
+        }
     },
 
     addCombo: async (comboItems) => {
         removeLegacyCartStorage();
+        const userId = get().currentUserId;
         const items = await cartService.addCombo(comboItems.map((item) => ({
             productId: item.product.id,
             quantity: item.quantity ?? 1,
         })));
-        set({ items });
+        if (userId && get().currentUserId === userId) {
+            set({ items });
+        }
     },
 
     removeItem: async (productId: string) => {
         removeLegacyCartStorage();
+        const userId = get().currentUserId;
         const items = await cartService.removeItem(productId);
-        set({ items });
+        if (userId && get().currentUserId === userId) {
+            set({ items });
+        }
     },
 
     updateQty: async (productId: string, quantity: number) => {
         removeLegacyCartStorage();
+        const userId = get().currentUserId;
         const items = quantity <= 0
             ? await cartService.removeItem(productId)
             : await cartService.updateItem(productId, quantity);
-        set({ items });
+        if (userId && get().currentUserId === userId) {
+            set({ items });
+        }
     },
 
     clearCart: async () => {
         removeLegacyCartStorage();
+        const userId = get().currentUserId;
         const items = await cartService.clearCart();
-        set({ items });
+        if (userId && get().currentUserId === userId) {
+            set({ items });
+        }
     },
 
     clearLocalCart: () => {

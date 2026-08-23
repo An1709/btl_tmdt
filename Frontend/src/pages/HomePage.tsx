@@ -1,23 +1,34 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Headphones,
+  HeartHandshake,
+  ShieldCheck,
+  ShoppingBag,
+  Sparkles,
+  Truck,
+} from "lucide-react";
+
 import { petCategories } from "@/types/product";
 import type { Product } from "@/types/product";
 import { productService } from "@/services/productService";
 import { categoryService } from "@/services/categoryService";
 import ProductList from "@/components/features/product/ProductList";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { ProductCardSkeleton } from "@/components/common/Loading";
+import { EmptyState, ErrorState } from "@/components/ui/feedback-state";
+import { Button } from "@/components/ui/button";
 
-// ── Inline skeleton row for ProductList sections ──────────────────────────
 const ProductRowSkeleton = () => (
-  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 animate-pulse">
-    {Array.from({ length: 6 }).map((_, i) => (
-      <div key={i} className="rounded-2xl border border-border overflow-hidden bg-white dark:bg-card">
-        <div className="bg-muted aspect-square w-full" />
-        <div className="p-3 flex flex-col gap-2">
-          <div className="h-3 bg-muted rounded w-3/4" />
-          <div className="h-4 bg-muted rounded w-1/3" />
-        </div>
-      </div>
+  <div
+    className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+    aria-label="Đang tải sản phẩm"
+    role="status"
+  >
+    {Array.from({ length: 6 }).map((_, index) => (
+      <ProductCardSkeleton key={index} />
     ))}
   </div>
 );
@@ -41,7 +52,6 @@ const HomePage = () => {
   const selectedCategory = petCategories.find((cat) => cat.id === activeCategory) ?? petCategories[0];
   const categoryViewAllLink = activeCategory === "all" ? "/shop" : `/shop?cat=${activeCategory}`;
 
-  // Fetch homepage product sections concurrently on mount
   useEffect(() => {
     productService.getPersonalizedRecommendations(8)
       .then((products) => setPersonalizedProducts(products.slice(0, 8)))
@@ -61,7 +71,7 @@ const HomePage = () => {
 
     productService.getAll({ category: "accessory", sort: "popular", limit: 6 })
       .then((res) => setAccessories(res.data))
-      .catch(() => { })
+      .catch(() => setAccessories([]))
       .finally(() => setAccLoading(false));
   }, []);
 
@@ -99,348 +109,205 @@ const HomePage = () => {
     };
 
     loadCategoryProducts();
-
     return () => {
       ignore = true;
     };
   }, [activeCategory]);
 
-  const features = [
-    {
-      emoji: "🐾", title: "Thú Cưng Khỏe Mạnh",
-      desc: "100% thú cưng có giấy tờ kiểm dịch, tiêm phòng đầy đủ, cam kết sức khỏe.",
-      gradient: "from-red-50 to-pink-50 dark:from-red-950/30 dark:to-pink-950/30",
-      border: "border-red-100 dark:border-red-900/30",
-    },
-    {
-      emoji: "🚚", title: "Giao Hàng Tận Nơi",
-      desc: "Dịch vụ vận chuyển thú cưng an toàn, nhanh chóng trong vòng 24–48h.",
-      gradient: "from-teal-50 to-cyan-50 dark:from-teal-950/30 dark:to-cyan-950/30",
-      border: "border-teal-100 dark:border-teal-900/30",
-    },
-    {
-      emoji: "💝", title: "Hỗ Trợ Tận Tâm",
-      desc: "Đội ngũ chuyên gia thú cưng tư vấn 24/7, bảo hành sức khỏe 30 ngày.",
-      gradient: "from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30",
-      border: "border-amber-100 dark:border-amber-900/30",
-    },
-    {
-      emoji: "⭐", title: "Đánh Giá 5 Sao",
-      desc: "Hơn 10,000+ khách hàng hài lòng, xếp hạng #1 pet shop online Việt Nam.",
-      gradient: "from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30",
-      border: "border-purple-100 dark:border-purple-900/30",
-    },
-  ];
-
-  const stats = [
-    { value: "10,000+", label: "Khách hàng vui lòng" },
-    { value: "500+", label: "Giống thú cưng" },
-    { value: "30", label: "Ngày bảo hành" },
-    { value: "24/7", label: "Hỗ trợ trực tuyến" },
+  const benefits = [
+    { icon: ShieldCheck, title: "Thông tin rõ ràng", desc: "Dễ dàng xem giá, tồn kho và thông tin sản phẩm trước khi quyết định." },
+    { icon: Truck, title: "Giao hàng tận nơi", desc: "Theo dõi lựa chọn giao hàng phù hợp với nhu cầu của bạn và thú cưng." },
+    { icon: Headphones, title: "Hỗ trợ tận tâm", desc: "Đội ngũ PetMart sẵn sàng giải đáp trong suốt hành trình mua sắm." },
+    { icon: HeartHandshake, title: "Chăm sóc có trách nhiệm", desc: "Đặt sự an toàn và mối quan hệ lâu dài giữa người với thú cưng lên trước." },
   ];
 
   return (
     <div className="overflow-x-hidden">
-
-      {/* ============================================================ */}
-      {/*  1. HERO BANNER                                               */}
-      {/* ============================================================ */}
-      <section className="relative min-h-[88vh] flex items-center overflow-hidden">
+      <section className="relative isolate overflow-hidden bg-slate-950 text-white">
         <img
           src="https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=1600&h=900&fit=crop"
-          alt="Hero pets"
-          className="absolute inset-0 w-full h-full object-cover"
+          alt="Chó và mèo đang ở bên nhau"
+          className="absolute inset-0 -z-20 h-full w-full object-cover opacity-55"
         />
-        <div className="hero-overlay absolute inset-0" />
-
-        <div className="absolute top-16 right-12 text-6xl animate-float opacity-90 select-none hidden md:block">🐕</div>
-        <div className="absolute bottom-24 right-24 text-5xl animate-float-slow opacity-80 select-none hidden md:block">🐈</div>
-        <div className="absolute top-32 right-1/3 text-4xl animate-float opacity-70 select-none hidden lg:block delay-200">🐇</div>
-        <div className="absolute bottom-16 left-16 text-4xl animate-float-slow opacity-60 select-none hidden md:block delay-400">🐾</div>
-
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div className="absolute inset-0 -z-10 bg-slate-950/70" />
+        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm border border-white/30
-                                        text-white text-sm font-semibold px-4 py-2 rounded-full mb-6 animate-fade-in-up">
-              <span className="w-2 h-2 bg-[var(--pet-warm)] rounded-full animate-pulse" />
-              🐾 Cửa hàng thú cưng #1 Việt Nam
-            </div>
-
-            <h1
-              className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight mb-4 animate-fade-in-up delay-100"
-              style={{ fontFamily: "'Nunito', sans-serif" }}
-            >
-              Mang Người Bạn<br />
-              <span className="text-[var(--pet-warm)]">Bốn Chân</span> Về Nhà
-              <span className="ml-2">🐾</span>
-            </h1>
-
-            <p className="text-lg text-white/85 mb-8 leading-relaxed animate-fade-in-up delay-200">
-              Khám phá hàng trăm giống thú cưng đáng yêu và phụ kiện cao cấp.
-              Mỗi bé đều được chăm sóc tận tình, có giấy kiểm dịch đầy đủ.
+            <p className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-white/80">
+              <Sparkles aria-hidden="true" className="size-4 text-primary" />
+              PetMart — mua sắm an tâm cho thú cưng
             </p>
-
-            <div className="flex flex-wrap gap-4 animate-fade-in-up delay-300">
-              <Link
-                to="/shop" id="hero-explore-btn"
-                className="bg-white text-[var(--pet-coral)] font-bold px-8 py-3.5 rounded-2xl
-                                           hover:bg-[var(--pet-warm)] hover:text-foreground hover:-translate-y-1
-                                           transition-all duration-300 shadow-xl hover:shadow-2xl flex items-center gap-2 text-sm md:text-base"
-              >
-                🔍 Khám Phá Ngay
-              </Link>
+            <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-balance sm:text-5xl lg:text-6xl">
+              Tìm đúng sản phẩm cho người bạn bốn chân.
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-white/80 sm:text-lg">
+              Khám phá thú cưng, thức ăn và phụ kiện được sắp xếp để bạn dễ tìm, dễ so sánh và dễ đưa ra lựa chọn phù hợp.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild size="lg">
+                <Link to="/shop">
+                  Khám phá sản phẩm <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="lg" className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+                <Link to="/about">Tìm hiểu về PetMart</Link>
+              </Button>
             </div>
+          </div>
+        </div>
+      </section>
 
-            <div className="flex flex-wrap gap-6 mt-10 animate-fade-in-up delay-400">
-              {stats.map((s) => (
-                <div key={s.label} className="text-white">
-                  <div className="text-2xl font-black" style={{ fontFamily: "'Nunito', sans-serif" }}>{s.value}</div>
-                  <div className="text-xs text-white/70">{s.label}</div>
+      <div id="home-content">
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="section-title">Bắt đầu theo nhu cầu</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Chọn nhóm phù hợp để đi thẳng đến sản phẩm bạn đang tìm.</p>
+            </div>
+            <Link to="/shop" className="inline-flex items-center gap-1 text-sm font-semibold text-primary underline-offset-4 hover:underline">
+              Xem toàn bộ cửa hàng <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </div>
+          <div className="mt-6 flex gap-3 overflow-x-auto pb-2 scrollbar-hide" role="tablist" aria-label="Lọc sản phẩm theo loài">
+            {petCategories.map((category) => (
+              <button
+                key={category.id}
+                id={`category-${category.id}`}
+                type="button"
+                role="tab"
+                aria-selected={activeCategory === category.id}
+                onClick={() => setActiveCategory(category.id)}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${activeCategory === category.id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-surface text-text-strong hover:border-primary hover:bg-primary-subtle"
+                  }`}
+              >
+                <span aria-hidden="true" className="text-lg">{category.emoji}</span>
+                {category.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8" aria-live="polite">
+          {categoryLoading && <ProductRowSkeleton />}
+          {!categoryLoading && categoryError && (
+            <ErrorState title="Chưa thể tải sản phẩm theo loài" description={categoryError} action={<Button asChild variant="outline"><Link to={categoryViewAllLink}>Mở cửa hàng</Link></Button>} />
+          )}
+          {!categoryLoading && !categoryError && categoryProducts.length === 0 && (
+            <EmptyState title="Chưa có sản phẩm phù hợp" description="Hãy thử nhóm khác hoặc xem toàn bộ cửa hàng." action={<Button asChild variant="outline"><Link to="/shop">Xem cửa hàng</Link></Button>} />
+          )}
+          {!categoryLoading && !categoryError && categoryProducts.length > 0 && (
+            <ProductList
+              products={categoryProducts}
+              title={activeCategory === "all" ? "Sản phẩm phổ biến" : selectedCategory.label}
+              subtitle="Sản phẩm được chọn theo nhóm bạn đang quan tâm"
+              viewAllLink={categoryViewAllLink}
+            />
+          )}
+        </section>
+
+        <section className="border-y border-border bg-surface-subtle" aria-live="polite">
+          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+            {personalizedLoading && <ProductRowSkeleton />}
+            {!personalizedLoading && personalizedError && (
+              <ErrorState title="Gợi ý hiện chưa sẵn sàng" description={personalizedError} action={<Button asChild variant="outline"><Link to="/shop">Khám phá cửa hàng</Link></Button>} />
+            )}
+            {!personalizedLoading && !personalizedError && personalizedProducts.length === 0 && (
+              <EmptyState title="Chưa có gợi ý dành cho bạn" description="Bạn vẫn có thể bắt đầu bằng cách xem các sản phẩm phổ biến." action={<Button asChild variant="outline"><Link to="/shop">Xem sản phẩm</Link></Button>} />
+            )}
+            {!personalizedLoading && !personalizedError && personalizedProducts.length > 0 && (
+              <ProductList
+                products={personalizedProducts}
+                title="Gợi ý dành cho bạn"
+                subtitle="Tham khảo lựa chọn dựa trên hoạt động mua sắm hiện có của bạn"
+                viewAllLink="/shop"
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8" aria-live="polite">
+          {featuredLoading && <ProductRowSkeleton />}
+          {!featuredLoading && featuredError && (
+            <ErrorState title="Chưa thể tải sản phẩm nổi bật" description={featuredError} action={<Button asChild variant="outline"><Link to="/shop">Mở cửa hàng</Link></Button>} />
+          )}
+          {!featuredLoading && !featuredError && featuredProducts.length === 0 && (
+            <EmptyState title="Chưa có sản phẩm nổi bật" description="Hãy xem toàn bộ danh mục để tìm lựa chọn phù hợp." action={<Button asChild variant="outline"><Link to="/shop">Xem cửa hàng</Link></Button>} />
+          )}
+          {!featuredLoading && !featuredError && featuredProducts.length > 0 && (
+            <ProductList
+              products={featuredProducts}
+              title="Được quan tâm nhiều"
+              subtitle="Những lựa chọn nổi bật đang được khách hàng chú ý"
+              viewAllLink="/shop"
+            />
+          )}
+        </section>
+
+        <section className="bg-surface-subtle py-14">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="max-w-2xl">
+              <h2 className="section-title">Một trải nghiệm mua sắm rõ ràng</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Các cam kết quen thuộc của PetMart được đặt cạnh hành trình mua sắm để bạn luôn biết điều gì đang chờ phía trước.</p>
+            </div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {benefits.map((benefit) => (
+                <div key={benefit.title} className="border-t border-border pt-4">
+                  <benefit.icon aria-hidden="true" className="size-5 text-primary" />
+                  <h3 className="mt-3 text-sm font-bold text-text-strong">{benefit.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{benefit.desc}</p>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0 60L1440 60L1440 20C1200 60 240 -10 0 20L0 60Z" className="fill-background" />
-          </svg>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/*  2. CATEGORY STRIP                                            */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="text-center mb-6">
-          <h2 className="section-title">Tìm Theo Loài</h2>
-          <p className="text-sm text-muted-foreground mt-1">Chọn người bạn đồng hành lý tưởng của bạn</p>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide justify-start md:justify-center flex-nowrap">
-          {petCategories.map((cat) => (
-            <button
-              key={cat.id}
-              id={`category-${cat.id}`}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`category-pill ${activeCategory === cat.id ? "active" : ""}`}
-            >
-              <span className="text-2xl">{cat.emoji}</span>
-              <span>{cat.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/*  3. CATEGORY PRODUCTS                                          */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {categoryLoading && (
-          <>
-            <p className="text-sm text-muted-foreground mb-4">Đang tải sản phẩm...</p>
-            <ProductRowSkeleton />
-          </>
-        )}
-
-        {!categoryLoading && categoryError && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">{categoryError}</p>
-          </div>
-        )}
-
-        {!categoryLoading && !categoryError && categoryProducts.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">Chưa có sản phẩm phù hợp.</p>
-          </div>
-        )}
-
-        {!categoryLoading && !categoryError && categoryProducts.length > 0 && (
-          <ProductList
-            products={categoryProducts}
-            title={activeCategory === "all" ? "Tất cả sản phẩm" : selectedCategory.label}
-            subtitle="Sản phẩm phù hợp với loài bạn đang chọn"
-            viewAllLink={categoryViewAllLink}
-          />
-        )}
-      </section>
-
-      {/* ============================================================ */}
-      {/*  4. PERSONALIZED RECOMMENDATIONS                               */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {personalizedLoading && (
-          <>
-            <p className="text-sm text-muted-foreground mb-4">Đang tải gợi ý dành cho bạn...</p>
-            <ProductRowSkeleton />
-          </>
-        )}
-
-        {!personalizedLoading && personalizedError && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">{personalizedError}</p>
-          </div>
-        )}
-
-        {!personalizedLoading && !personalizedError && personalizedProducts.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">Chưa có sản phẩm gợi ý.</p>
-          </div>
-        )}
-
-        {!personalizedLoading && !personalizedError && personalizedProducts.length > 0 && (
-          <ProductList
-            products={personalizedProducts}
-            title="Có thể bạn sẽ thích"
-            subtitle="Gợi ý dựa trên giỏ hàng, yêu thích và lịch sử mua sắm của bạn"
-            viewAllLink="/shop"
-          />
-        )}
-      </section>
-
-      {/* ============================================================ */}
-      {/*  5. FEATURED PRODUCTS                                          */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {featuredLoading && (
-          <>
-            <p className="text-sm text-muted-foreground mb-4">Đang tải sản phẩm nổi bật...</p>
-            <ProductRowSkeleton />
-          </>
-        )}
-
-        {!featuredLoading && featuredError && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">{featuredError}</p>
-          </div>
-        )}
-
-        {!featuredLoading && !featuredError && featuredProducts.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground">
-            <div className="text-5xl mb-4">🐾</div>
-            <p className="font-semibold">Chưa có sản phẩm nổi bật.</p>
-          </div>
-        )}
-
-        {!featuredLoading && !featuredError && featuredProducts.length > 0 && (
-          <ProductList
-            products={featuredProducts}
-            title="Thú cưng và phụ kiện nổi bật ✨"
-            subtitle="Những sản phẩm được yêu thích nhất dựa trên đánh giá và mức độ quan tâm"
-            viewAllLink="/shop"
-          />
-        )}
-      </section>
-
-      {/* ============================================================ */}
-      {/*  6. WHY PETMART FEATURES                                      */}
-      {/* ============================================================ */}
-      <section className="bg-muted/40 dark:bg-muted/20 py-16 mt-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="section-title">Tại Sao Chọn PetMart?</h2>
-            <p className="text-sm text-muted-foreground mt-1">Cam kết mang lại trải nghiệm tốt nhất cho bạn và thú cưng</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {features.map((f, i) => (
-              <div
-                key={f.title}
-                className={`feature-box bg-gradient-to-br ${f.gradient} border ${f.border} animate-fade-in-up`}
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                <div className="text-4xl">{f.emoji}</div>
-                <h3 className="font-bold text-foreground text-sm" style={{ fontFamily: "'Nunito', sans-serif" }}>{f.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/*  7. ACCESSORIES SECTION                                       */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {accLoading ? (
-          <ProductRowSkeleton />
-        ) : (
-          <ProductList
-            products={accessories}
-            title="Phụ Kiện Yêu Thương 🛍️"
-            subtitle="Tất cả những gì bé cần cho một cuộc sống hạnh phúc"
-            viewAllLink="/shop?cat=accessory"
-          />
-        )}
-      </section>
-
-      {/* ============================================================ */}
-      {/*  8. BANNER PROMO STRIP                                        */}
-      {/* ============================================================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
-        <div className="rounded-3xl overflow-hidden relative bg-gradient-to-r from-[var(--pet-coral)] to-[var(--pet-mint)] p-8 md:p-12 flex flex-col md:flex-row items-center gap-6">
-          <div className="absolute top-4 right-8 text-5xl opacity-20 select-none">🐾</div>
-          <div className="absolute bottom-4 right-32 text-3xl opacity-15 select-none">🐕</div>
-          <div className="flex-1 text-white text-center md:text-left">
-            <p className="text-sm font-semibold uppercase tracking-widest text-white/70 mb-2">Ưu Đãi Đặc Biệt</p>
-            <h2 className="text-3xl md:text-4xl font-black mb-3" style={{ fontFamily: "'Nunito', sans-serif" }}>
-              Giảm 20% Đơn Hàng<br />Đầu Tiên! 🎉
-            </h2>
-            <p className="text-white/80 text-sm">Dùng mã <strong className="text-[var(--pet-warm)]">PETMART20</strong> khi thanh toán</p>
-          </div>
-          <Link
-            to="/shop" id="promo-btn"
-            className="bg-white text-[var(--pet-coral)] font-bold px-8 py-3.5 rounded-2xl
-                                   hover:bg-[var(--pet-warm)] hover:text-foreground hover:-translate-y-1
-                                   transition-all duration-300 shadow-lg text-sm shrink-0"
-          >
-            Mua Ngay →
-          </Link>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/*  9. ADMIN QUICK-ACCESS                                       */}
-      {/* ============================================================ */}
-      {isAdmin && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/60 p-8 md:p-10 flex flex-col md:flex-row items-center gap-6 shadow-2xl">
-            <div
-              className="absolute inset-0 opacity-[0.04]"
-              style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h32v1H0zM0 0v32h1V0z' fill='%23fff'/%3E%3C/svg%3E\")" }}
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8" aria-live="polite">
+          {accLoading && <ProductRowSkeleton />}
+          {!accLoading && accessories.length === 0 && (
+            <EmptyState title="Chưa có phụ kiện để hiển thị" description="Bạn có thể khám phá các danh mục khác trong cửa hàng." action={<Button asChild variant="outline"><Link to="/shop">Xem cửa hàng</Link></Button>} />
+          )}
+          {!accLoading && accessories.length > 0 && (
+            <ProductList
+              products={accessories}
+              title="Phụ kiện cho cuộc sống hằng ngày"
+              subtitle="Những món đồ nhỏ giúp việc chăm sóc thú cưng thuận tiện hơn"
+              viewAllLink="/shop?cat=accessory"
             />
-            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-violet-600/20 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
-            <div className="relative flex flex-col md:flex-row items-center md:items-start gap-5 flex-1">
-              <div className="text-5xl select-none">🛡️</div>
-              <div className="text-center md:text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">Khu vực quản trị</p>
-                <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent mb-2" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                  Trang Quản Trị Admin
-                </h2>
-                <p className="text-slate-400 text-sm">
-                  Bạn đang đăng nhập với tài khoản&nbsp;
-                  <span className="text-violet-300 font-semibold">{user?.username}</span>.
-                  &nbsp;Quay lại bảng điều khiển để quản lý hệ thống.
-                </p>
-              </div>
+          )}
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 rounded-2xl border border-primary/25 bg-primary-subtle p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div>
+              <p className="text-sm font-semibold text-primary">Ưu đãi hiện có</p>
+              <h2 className="mt-2 text-2xl font-black text-text-strong">Giảm 20% cho đơn hàng đầu tiên</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Nhập mã <strong className="text-text-strong">PETMART20</strong> khi thanh toán.</p>
             </div>
-            <Link
-              to="/admin" id="admin-dashboard-btn"
-              className="relative shrink-0 inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600
-                                       hover:from-violet-500 hover:to-indigo-500 text-white font-bold px-7 py-3.5 rounded-2xl
-                                       transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-violet-500/30 text-sm"
-            >
-              ⚙️ Vào Trang Quản Trị
-            </Link>
+            <Button asChild size="lg">
+              <Link to="/shop">Mua sắm ngay <ArrowRight aria-hidden="true" /></Link>
+            </Button>
           </div>
         </section>
-      )}
 
+        {isAdmin && (
+          <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-5 rounded-2xl border border-border bg-surface p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+              <div className="flex items-start gap-4">
+                <div className="rounded-lg bg-primary-subtle p-3 text-primary"><BadgeCheck aria-hidden="true" className="size-5" /></div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Khu vực quản trị</p>
+                  <h2 className="mt-1 text-xl font-bold text-text-strong">Quản lý PetMart</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Đang đăng nhập với tài khoản <span className="font-semibold text-text-strong">{user?.username}</span>.</p>
+                </div>
+              </div>
+              <Button asChild variant="outline">
+                <Link to="/admin"><ShoppingBag aria-hidden="true" /> Vào trang quản trị</Link>
+              </Button>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 };

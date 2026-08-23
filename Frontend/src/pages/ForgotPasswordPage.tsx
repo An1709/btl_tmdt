@@ -4,12 +4,13 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { authService } from "@/services/authService";
+
+import { maskEmail } from "@/components/auth/auth-display-utils";
+import { AuthFormAlert, PasswordInput } from "@/components/auth/auth-form-support";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { FormField } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { IMAGE_ASSETS } from "@/utils/constants";
+import { authService } from "@/services/authService";
 
 const OTP_TTL_SECONDS = 90;
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -133,7 +134,7 @@ const ForgotPasswordPage = () => {
   };
 
   const handleSendCode = async () => {
-    const accountInfoValid = await trigger(["username", "email"]);
+    const accountInfoValid = await trigger(["username", "email"], { shouldFocus: true });
     if (!accountInfoValid) return;
 
     const username = getValues("username");
@@ -212,155 +213,180 @@ const ForgotPasswordPage = () => {
     }
   };
 
+  const expiryMessage = "Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã.";
+  const resendWaitSeconds = Math.max(0, secondsLeft - (OTP_TTL_SECONDS - RESEND_COOLDOWN_SECONDS));
+
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="flex flex-col gap-6">
-        <Card className="overflow-hidden p-0 border-border">
-          <CardContent className="grid p-0 md:grid-cols-2">
-            <form className="p-6 md:p-8" onSubmit={handleSubmit(onSubmit)}>
-              <div className="flex flex-col gap-6">
-                <div className="flex flex-col items-center text-center gap-2">
-                  <Link to="/" className="mx-auto block w-fit text-center">
-                    <img src={IMAGE_ASSETS.logo} alt="logo" />
-                  </Link>
+    <section
+      className="rounded-lg border border-border bg-surface-elevated p-6 shadow-elevation-2 sm:p-8"
+      aria-labelledby="forgot-password-heading"
+    >
+      <header>
+        <p className="text-sm font-semibold text-primary">Bước {isOtpStep ? "2" : "1"} / 2</p>
+        <h1 id="forgot-password-heading" className="mt-2 font-heading text-2xl font-bold tracking-tight text-text-strong sm:text-3xl">
+          {isOtpStep ? "Tạo mật khẩu mới" : "Khôi phục mật khẩu"}
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {isOtpStep
+            ? "Nhập mã xác minh và chọn mật khẩu mới cho tài khoản của bạn."
+            : "Nhập đúng tên đăng nhập và email đã dùng khi đăng ký."}
+        </p>
+      </header>
 
-                  <h1 className="text-2xl font-bold">Đặt lại mật khẩu</h1>
-                  <p className="text-muted-foreground text-balance">
-                    {isOtpStep
-                      ? "Mã OTP đã được gửi đến email của bạn."
-                      : "Nhập tên đăng nhập và email đã dùng để đăng ký."}
-                  </p>
-                  {isOtpStep && (
-                    <>
-                      <p className="text-sm font-medium break-all">
-                        Mã OTP đã được gửi đến: {resetFlow?.email}
-                      </p>
-                      <p className={isExpired ? "text-destructive text-sm" : "text-sm font-medium"}>
-                        {isExpired
-                          ? "Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã."
-                          : `Mã OTP hết hạn sau ${formatTime(secondsLeft)}`}
-                      </p>
-                    </>
-                  )}
-                </div>
+      {isOtpStep && resetFlow && (
+        <div className="mt-6 rounded-md border border-border bg-surface-subtle px-4 py-3">
+          <p className="text-sm text-muted-foreground">
+            Mã đã được gửi đến <span className="font-semibold text-text-strong">{maskEmail(resetFlow.email)}</span>
+          </p>
+          <p
+            className={`mt-1 text-sm font-semibold ${isExpired ? "text-destructive" : "text-text-strong"}`}
+            aria-live={isExpired ? "polite" : "off"}
+          >
+            {isExpired ? expiryMessage : `Mã hết hạn sau ${formatTime(secondsLeft)}`}
+          </p>
+        </div>
+      )}
 
-                {!isOtpStep && (
-                  <>
-                    <div className="flex flex-col gap-3">
-                      <Label htmlFor="username" className="block text-sm">
-                        Tên đăng nhập
-                      </Label>
-                      <Input type="text" id="username" placeholder="username" {...register("username")} />
-                      {errors.username && (
-                        <p className="text-destructive text-sm">{errors.username.message}</p>
-                      )}
-                    </div>
+      <form
+        className="mt-6 space-y-5"
+        onSubmit={isOtpStep
+          ? handleSubmit(onSubmit)
+          : (event) => {
+              event.preventDefault();
+              void handleSendCode();
+            }}
+        noValidate
+      >
+        {!isOtpStep && (
+          <>
+            <FormField label="Tên đăng nhập" error={errors.username?.message} required>
+              {(controlProps) => (
+                <Input
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="Nhập tên đăng nhập"
+                  disabled={sendingCode}
+                  {...controlProps}
+                  {...register("username")}
+                />
+              )}
+            </FormField>
 
-                    <div className="flex flex-col gap-3">
-                      <Label htmlFor="email" className="block text-sm">
-                        Email
-                      </Label>
-                      <Input type="email" id="email" placeholder="email@example.com" {...register("email")} />
-                      {errors.email && (
-                        <p className="text-destructive text-sm">{errors.email.message}</p>
-                      )}
-                    </div>
+            <FormField label="Email" error={errors.email?.message} required>
+              {(controlProps) => (
+                <Input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="ban@example.com"
+                  disabled={sendingCode}
+                  {...controlProps}
+                  {...register("email")}
+                />
+              )}
+            </FormField>
+          </>
+        )}
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      disabled={sendingCode}
-                      onClick={handleSendCode}
-                    >
-                      {sendingCode ? "Đang gửi OTP..." : "Gửi mã OTP"}
-                    </Button>
-                  </>
-                )}
+        {isOtpStep && (
+          <>
+            <FormField
+              label="Mã OTP"
+              description="Nhập mã gồm 6 chữ số trong email."
+              error={errors.code?.message}
+              required
+            >
+              {(controlProps) => (
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="123456"
+                  disabled={isExpired || sendingCode || resetting}
+                  className="font-mono text-lg tracking-[0.32em]"
+                  {...controlProps}
+                  {...register("code")}
+                />
+              )}
+            </FormField>
 
-                {isOtpStep && (
-                  <>
-                    <div className="flex flex-col gap-3">
-                      <Label htmlFor="code" className="block text-sm">
-                        Mã OTP
-                      </Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        id="code"
-                        placeholder="123456"
-                        disabled={isExpired}
-                        {...register("code")}
-                      />
-                      {errors.code && (
-                        <p className="text-destructive text-sm">{errors.code.message}</p>
-                      )}
-                    </div>
+            <FormField
+              label="Mật khẩu mới"
+              description="Mật khẩu cần có ít nhất 6 ký tự."
+              error={errors.newPassword?.message}
+              required
+            >
+              {(controlProps) => (
+                <PasswordInput
+                  autoComplete="new-password"
+                  placeholder="Nhập mật khẩu mới"
+                  disabled={isExpired || sendingCode || resetting}
+                  {...controlProps}
+                  {...register("newPassword")}
+                />
+              )}
+            </FormField>
 
-                    <div className="flex flex-col gap-3">
-                      <Label htmlFor="newPassword" className="block text-sm">
-                        Mật khẩu mới
-                      </Label>
-                      <Input type="password" id="newPassword" {...register("newPassword")} />
-                      {errors.newPassword && (
-                        <p className="text-destructive text-sm">{errors.newPassword.message}</p>
-                      )}
-                    </div>
+            <FormField label="Xác nhận mật khẩu mới" error={errors.confirmNewPassword?.message} required>
+              {(controlProps) => (
+                <PasswordInput
+                  autoComplete="new-password"
+                  placeholder="Nhập lại mật khẩu mới"
+                  disabled={isExpired || sendingCode || resetting}
+                  {...controlProps}
+                  {...register("confirmNewPassword")}
+                />
+              )}
+            </FormField>
+          </>
+        )}
 
-                    <div className="flex flex-col gap-3">
-                      <Label htmlFor="confirmNewPassword" className="block text-sm">
-                        Xác nhận mật khẩu mới
-                      </Label>
-                      <Input
-                        type="password"
-                        id="confirmNewPassword"
-                        {...register("confirmNewPassword")}
-                      />
-                      {errors.confirmNewPassword && (
-                        <p className="text-destructive text-sm">
-                          {errors.confirmNewPassword.message}
-                        </p>
-                      )}
-                    </div>
+        <AuthFormAlert message={serverError === expiryMessage ? "" : serverError} />
 
-                    <button
-                      type="button"
-                      className="text-center text-sm underline underline-offset-4 disabled:opacity-50"
-                      onClick={handleResendCode}
-                      disabled={sendingCode || !canResend}
-                    >
-                      {sendingCode ? "Đang gửi lại..." : "Gửi lại mã OTP"}
-                    </button>
-                  </>
-                )}
-
-                {serverError && <p className="text-destructive text-sm">{serverError}</p>}
-
-                <Button type="submit" className="w-full" disabled={!isOtpStep || resetting || isExpired}>
-                  {resetting ? "Đang đặt lại..." : "Đặt lại mật khẩu"}
-                </Button>
-
-                <div className="text-center text-sm">
-                  Đã nhớ mật khẩu?{" "}
-                  <Link to="/signin" className="underline underline-offset-4" onClick={clearResetFlow}>
-                    Đăng nhập
-                  </Link>
-                </div>
-              </div>
-            </form>
-
-            <div className="bg-muted relative hidden md:block">
-              <img
-                src={IMAGE_ASSETS.placeholder}
-                alt="Image"
-                className="absolute top-1/2 -translate-y-1/2 object-cover"
-              />
+        {!isOtpStep ? (
+          <Button type="submit" className="w-full" loading={sendingCode}>
+            Gửi mã OTP
+          </Button>
+        ) : (
+          <>
+            <Button type="submit" className="w-full" loading={resetting} disabled={isExpired || sendingCode}>
+              Đặt lại mật khẩu
+            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleResendCode}
+                loading={sendingCode}
+                disabled={!canResend || resetting}
+              >
+                {canResend ? "Gửi lại mã" : `Gửi lại sau ${formatTime(resendWaitSeconds)}`}
+              </Button>
+              <Button type="button" variant="ghost" onClick={clearResetFlow} disabled={sendingCode || resetting}>
+                Đổi thông tin tài khoản
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          </>
+        )}
+      </form>
+
+      <p className="mt-6 border-t border-divider pt-5 text-center text-sm text-muted-foreground">
+        Đã nhớ mật khẩu?{" "}
+        <Link
+          to="/signin"
+          className="rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45"
+          onClick={clearResetFlow}
+        >
+          Đăng nhập
+        </Link>
+      </p>
+    </section>
   );
 };
 

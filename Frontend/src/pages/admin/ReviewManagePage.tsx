@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import DataTable, { type Column } from "@/components/features/admin/DataTable";
+import DataTable, { DataTableConfirmAction, type Column } from "@/components/features/admin/DataTable";
+import { AdminPageHeader } from "@/components/features/admin/AdminSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatRelativeTime } from "@/utils/format";
 import { toast } from "sonner";
 import { adminReviewService, type AdminReview } from "@/services/adminReviewService";
@@ -7,14 +10,16 @@ import { adminReviewService, type AdminReview } from "@/services/adminReviewServ
 const ReviewManagePage = () => {
     const [reviews, setReviews] = useState<AdminReview[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const loadReviews = useCallback(async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             const data = await adminReviewService.getAll();
             setReviews(data);
         } catch {
-            toast.error("Không thể tải danh sách đánh giá.");
+            setLoadError("Không thể tải danh sách đánh giá. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }
@@ -25,13 +30,14 @@ const ReviewManagePage = () => {
     }, [loadReviews]);
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Bạn có chắc muốn xóa đánh giá này?")) return;
         try {
             await adminReviewService.delete(id);
             setReviews((prev) => prev.filter((r) => r._id !== id));
             toast.success("Đã xóa đánh giá vi phạm.");
+            return true;
         } catch {
             toast.error("Không thể xóa đánh giá. Vui lòng thử lại.");
+            return false;
         }
     };
 
@@ -48,13 +54,13 @@ const ReviewManagePage = () => {
         },
         { 
             key: "rating", 
-            header: "⭐", 
-            render: (r) => <span className="font-bold text-amber-500">{r.rating}/5</span> 
+            header: "Đánh giá",
+            render: (r) => <Badge tone="warning" aria-label={`${r.rating} trên 5 sao`}>{r.rating}/5 sao</Badge>
         },
         { 
             key: "comment", 
             header: "Bình luận", 
-            render: (r) => <span className="text-foreground text-sm line-clamp-2 max-w-xs">{r.comment}</span> 
+            render: (r) => <span className="block max-w-md whitespace-pre-wrap text-sm leading-6 text-foreground">{r.comment || "Không có nội dung"}</span>
         },
         { 
             key: "time", 
@@ -65,29 +71,18 @@ const ReviewManagePage = () => {
 
     return (
         <div className="flex flex-col gap-6">
-            <h1 className="section-title">⭐ Kiểm Duyệt Đánh Giá</h1>
-            {loading ? (
-                <div className="animate-pulse flex flex-col gap-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="h-14 bg-muted rounded-xl" />
-                    ))}
-                </div>
-            ) : (
-                <DataTable
-                    columns={columns}
-                    data={reviews}
-                    keyExtractor={(r) => r._id}
-                    emptyText="Không có đánh giá nào."
-                    actions={(r) => (
-                        <button 
-                            onClick={() => handleDelete(r._id)} 
-                            className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold"
-                        >
-                            Xóa spam
-                        </button>
-                    )}
-                />
-            )}
+            <AdminPageHeader title="Kiểm duyệt đánh giá" description="Đọc đầy đủ ngữ cảnh sản phẩm, người dùng và nội dung trước khi xóa đánh giá." />
+            <DataTable
+                columns={columns}
+                data={reviews}
+                keyExtractor={(review) => review._id}
+                isLoading={loading}
+                error={loadError ? { description: loadError, action: <Button type="button" variant="outline" size="sm" onClick={() => void loadReviews()}>Thử lại</Button> } : null}
+                emptyTitle="Chưa có đánh giá"
+                emptyText="Các đánh giá mới sẽ xuất hiện tại đây để kiểm duyệt."
+                tableLabel="Danh sách đánh giá quản trị"
+                actions={(review) => <DataTableConfirmAction label="Xóa" title="Xóa đánh giá" description={`Xóa đánh giá ${review.rating}/5 sao của ${review.user?.displayName || review.user?.username || review.user?.email || "người dùng"}? Hành động này không thể hoàn tác.`} confirmLabel="Xóa đánh giá" onConfirm={() => handleDelete(review._id)} />}
+            />
         </div>
     );
 };

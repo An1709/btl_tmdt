@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
 import { couponService, type CouponPayload } from "@/services/couponService";
 import type { Coupon } from "@/types/coupon";
-import DataTable, { type Column } from "@/components/features/admin/DataTable";
+import DataTable, { DataTableActionGroup, DataTableConfirmAction, type Column } from "@/components/features/admin/DataTable";
+import { AdminPageHeader } from "@/components/features/admin/AdminSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { toast } from "sonner";
 
@@ -56,41 +64,46 @@ const validateForm = (payload: CouponPayload) => {
 
 const getCouponStatus = (coupon: Coupon) => {
     const expired = new Date(coupon.expirationDate).getTime() < Date.now();
-    if (expired) return { label: "Hết hạn", className: "bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300" };
+    if (expired) return { label: "Hết hạn", tone: "error" as const };
     if (coupon.usageLimit > 0 && coupon.usedCount >= coupon.usageLimit) {
-        return { label: "Hết lượt", className: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300" };
+        return { label: "Hết lượt", tone: "warning" as const };
     }
-    return { label: "Đang hoạt động", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" };
+    return { label: "Đang hoạt động", tone: "success" as const };
 };
 
 const CouponManagePage = () => {
     const [coupons, setCoupons] = useState<Coupon[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [formOpen, setFormOpen] = useState(false);
+    const [showValidation, setShowValidation] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [form, setForm] = useState<CouponFormState>(emptyForm);
 
-    const loadCoupons = () => {
+    const loadCoupons = useCallback(() => {
         setLoading(true);
-        couponService.getAllCoupons()
+        setLoadError(null);
+        couponService.getAllCoupons(50)
             .then(setCoupons)
-            .catch(() => toast.error("Không thể tải danh sách mã giảm giá. Vui lòng thử lại."))
+            .catch(() => setLoadError("Không thể tải danh sách mã giảm giá. Vui lòng thử lại."))
             .finally(() => setLoading(false));
-    };
+    }, []);
 
     useEffect(() => {
         loadCoupons();
-    }, []);
+    }, [loadCoupons]);
 
     const openCreateForm = () => {
         setEditingCoupon(null);
         setForm(emptyForm);
+        setShowValidation(false);
         setFormOpen(true);
     };
 
     const openEditForm = (coupon: Coupon) => {
         setEditingCoupon(coupon);
+        setShowValidation(false);
         setForm({
             code: coupon.code,
             discountType: coupon.discountType,
@@ -107,16 +120,18 @@ const CouponManagePage = () => {
         setFormOpen(false);
         setEditingCoupon(null);
         setForm(emptyForm);
+        setShowValidation(false);
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Xóa mã giảm giá này?")) return;
         try {
             await couponService.deleteCoupon(id);
             setCoupons((prev) => prev.filter((c) => c._id !== id));
             toast.success("Đã xóa mã giảm giá.");
+            return true;
         } catch {
             toast.error("Không thể xóa.");
+            return false;
         }
     };
 
@@ -126,6 +141,7 @@ const CouponManagePage = () => {
         const validationError = validateForm(payload);
 
         if (validationError) {
+            setShowValidation(true);
             toast.error(validationError);
             return;
         }
@@ -152,29 +168,40 @@ const CouponManagePage = () => {
         }
     };
 
+    const payloadPreview = buildPayload(form);
+    const fieldErrors = showValidation ? {
+        code: !payloadPreview.code ? "Vui lòng nhập mã giảm giá." : undefined,
+        discountValue: !Number.isFinite(payloadPreview.discountValue) || payloadPreview.discountValue <= 0
+            ? "Giá trị giảm phải lớn hơn 0."
+            : payloadPreview.discountType === "percent" && payloadPreview.discountValue > 100
+                ? "Giá trị giảm theo phần trăm phải nhỏ hơn hoặc bằng 100."
+                : undefined,
+        minOrderValue: !Number.isFinite(payloadPreview.minOrderValue) || payloadPreview.minOrderValue < 0 ? "Đơn tối thiểu phải lớn hơn hoặc bằng 0." : undefined,
+        usageLimit: !Number.isFinite(payloadPreview.usageLimit) || payloadPreview.usageLimit < 0 ? "Giới hạn lượt dùng phải lớn hơn hoặc bằng 0." : undefined,
+        endDate: !payloadPreview.endDate ? "Vui lòng chọn ngày kết thúc." : undefined,
+    } : {};
+
     const columns: Column<Coupon>[] = useMemo(() => [
         { key: "code", header: "Mã", render: (c) => <span className="font-mono font-bold text-foreground">{c.code}</span> },
         {
             key: "discount",
             header: "Giảm giá",
             render: (c) => (
-                <span className="font-bold text-[var(--pet-coral)]">
+                <span className="font-semibold text-primary">
                     {c.discountType === "percent" ? `${c.discountValue ?? c.value}%` : formatCurrency(c.discountValue ?? c.value)}
                 </span>
             ),
         },
-        { key: "min", header: "Đơn tối thiểu", render: (c) => formatCurrency(c.minOrderValue) },
+        { key: "min", header: "Đơn tối thiểu", hideOnMobile: true, render: (c) => formatCurrency(c.minOrderValue) },
         { key: "used", header: "Đã dùng", render: (c) => `${c.usedCount}/${c.usageLimit > 0 ? c.usageLimit : "Không giới hạn"}` },
-        { key: "expires", header: "Hết hạn", render: (c) => formatDate(c.expirationDate) },
+        { key: "expires", header: "Hết hạn", hideOnMobile: true, render: (c) => formatDate(c.expirationDate) },
         {
             key: "status",
             header: "Trạng thái",
             render: (c) => {
                 const status = getCouponStatus(c);
                 return (
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap ${status.className}`}>
-                        {status.label}
-                    </span>
+                    <Badge tone={status.tone}>{status.label}</Badge>
                 );
             },
         },
@@ -182,140 +209,43 @@ const CouponManagePage = () => {
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="section-title">🎟️ Mã Giảm Giá</h1>
-                <button type="button" onClick={openCreateForm} className="btn-pet-primary">
-                    + Thêm mã giảm giá
-                </button>
-            </div>
+            <AdminPageHeader
+                title="Mã giảm giá"
+                description="Quản lý giá trị, điều kiện áp dụng, giới hạn sử dụng và thời hạn theo các quy tắc coupon hiện có."
+                actions={<Button type="button" onClick={openCreateForm}><Plus aria-hidden="true" />Thêm mã giảm giá</Button>}
+            />
 
             <DataTable
                 columns={columns}
                 data={coupons}
                 keyExtractor={(c) => c._id}
                 isLoading={loading}
-                emptyText="Chưa có mã giảm giá nào."
-                actions={(c) => (
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => openEditForm(c)}
-                            className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold"
-                        >
-                            Sửa
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleDelete(c._id)}
-                            className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold"
-                        >
-                            Xóa
-                        </button>
-                    </div>
-                )}
+                error={loadError ? { description: loadError, action: <Button type="button" variant="outline" size="sm" onClick={() => loadCoupons()}>Thử lại</Button> } : null}
+                emptyTitle="Chưa có mã giảm giá"
+                emptyText="Tạo mã giảm giá đầu tiên để dùng trong bước thanh toán."
+                tableLabel="Danh sách mã giảm giá"
+                actions={(coupon) => <DataTableActionGroup><Button type="button" variant="outline" size="sm" onClick={() => openEditForm(coupon)}>Sửa</Button><DataTableConfirmAction label="Xóa" title="Xóa mã giảm giá" description={`Bạn sắp xóa mã “${coupon.code}”. Mã này sẽ không còn xuất hiện trong danh sách.`} confirmLabel="Xóa mã" onConfirm={() => handleDelete(coupon._id)} /></DataTableActionGroup>}
             />
 
-            {formOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-                    <div className="w-full max-w-xl rounded-2xl border border-border bg-white dark:bg-card p-5 shadow-2xl">
-                        <div className="flex items-start justify-between gap-4 mb-5">
-                            <div>
-                                <h2 className="font-black text-xl text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                                    {editingCoupon ? "Chỉnh sửa mã giảm giá" : "Thêm mã giảm giá"}
-                                </h2>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Mã sẽ được dùng trong bước thanh toán nếu còn hạn và còn lượt dùng.
-                                </p>
-                            </div>
-                            <button type="button" onClick={closeForm} className="text-muted-foreground hover:text-foreground text-xl leading-none">
-                                ×
-                            </button>
-                        </div>
-
-                        <form className="grid grid-cols-1 sm:grid-cols-2 gap-4" onSubmit={handleSubmit}>
-                            <label className="flex flex-col gap-1.5 sm:col-span-2">
-                                <span className="text-sm font-semibold text-foreground">Mã</span>
-                                <input
-                                    value={form.code}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    placeholder="WELCOME10"
-                                    disabled={saving}
-                                />
-                            </label>
-
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-sm font-semibold text-foreground">Loại giảm giá</span>
-                                <select
-                                    value={form.discountType}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, discountType: event.target.value as CouponFormState["discountType"] }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    disabled={saving}
-                                >
-                                    <option value="percent">Giảm theo phần trăm</option>
-                                    <option value="fixed">Giảm số tiền cố định</option>
-                                </select>
-                            </label>
-
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-sm font-semibold text-foreground">Giá trị giảm</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={form.discountValue}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, discountValue: event.target.value }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    disabled={saving}
-                                />
-                            </label>
-
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-sm font-semibold text-foreground">Đơn tối thiểu</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={form.minOrderValue}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, minOrderValue: event.target.value }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    disabled={saving}
-                                />
-                            </label>
-
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-sm font-semibold text-foreground">Giới hạn lượt dùng</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={form.usageLimit}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, usageLimit: event.target.value }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    disabled={saving}
-                                />
-                            </label>
-
-                            <label className="flex flex-col gap-1.5 sm:col-span-2">
-                                <span className="text-sm font-semibold text-foreground">Ngày kết thúc</span>
-                                <input
-                                    type="date"
-                                    value={form.endDate}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))}
-                                    className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40"
-                                    disabled={saving}
-                                />
-                            </label>
-
-                            <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
-                                <button type="button" onClick={closeForm} disabled={saving} className="btn-pet-secondary">
-                                    Hủy
-                                </button>
-                                <button type="submit" disabled={saving} className="btn-pet-primary">
-                                    {saving ? "Đang lưu..." : "Lưu"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <Dialog
+                open={formOpen}
+                onOpenChange={(nextOpen) => { if (!nextOpen) closeForm(); }}
+                title={editingCoupon ? "Chỉnh sửa mã giảm giá" : "Thêm mã giảm giá"}
+                description="Mã vẫn được kiểm tra ở bước thanh toán theo thời hạn và giới hạn sử dụng hiện có."
+                size="lg"
+                closeOnBackdrop={!saving}
+                closeOnEscape={!saving}
+                footer={<DialogFooter><Button type="button" variant="outline" onClick={closeForm} disabled={saving}>Hủy</Button><Button type="submit" form="coupon-form" loading={saving}>{editingCoupon ? "Cập nhật mã" : "Tạo mã"}</Button></DialogFooter>}
+            >
+                <form id="coupon-form" className="grid grid-cols-1 gap-5 sm:grid-cols-2" onSubmit={handleSubmit}>
+                    <FormField className="sm:col-span-2" label="Mã giảm giá" required error={fieldErrors.code} description="Mã được tự động chuyển thành chữ in hoa.">{(controlProps) => <Input {...controlProps} data-autofocus value={form.code} onChange={(event) => setForm((previous) => ({ ...previous, code: event.target.value.toUpperCase() }))} placeholder="WELCOME10" disabled={saving} />}</FormField>
+                    <FormField label="Loại giảm giá" required>{(controlProps) => <Select {...controlProps} value={form.discountType} onChange={(event) => setForm((previous) => ({ ...previous, discountType: event.target.value as CouponFormState["discountType"] }))} disabled={saving}><option value="percent">Giảm theo phần trăm</option><option value="fixed">Giảm số tiền cố định</option></Select>}</FormField>
+                    <FormField label="Giá trị giảm" required error={fieldErrors.discountValue} description={form.discountType === "percent" ? "Từ 0 đến 100%." : "Nhập số tiền lớn hơn 0."}>{(controlProps) => <Input {...controlProps} type="number" min="0" max={form.discountType === "percent" ? "100" : undefined} inputMode="decimal" value={form.discountValue} onChange={(event) => setForm((previous) => ({ ...previous, discountValue: event.target.value }))} disabled={saving} />}</FormField>
+                    <FormField label="Đơn tối thiểu" required error={fieldErrors.minOrderValue} description="Nhập 0 nếu không áp dụng mức tối thiểu.">{(controlProps) => <Input {...controlProps} type="number" min="0" inputMode="decimal" value={form.minOrderValue} onChange={(event) => setForm((previous) => ({ ...previous, minOrderValue: event.target.value }))} disabled={saving} />}</FormField>
+                    <FormField label="Giới hạn lượt dùng" required error={fieldErrors.usageLimit} description="Nhập 0 nếu không giới hạn lượt dùng.">{(controlProps) => <Input {...controlProps} type="number" min="0" step="1" inputMode="numeric" value={form.usageLimit} onChange={(event) => setForm((previous) => ({ ...previous, usageLimit: event.target.value }))} disabled={saving} />}</FormField>
+                    <FormField label="Ngày kết thúc" required error={fieldErrors.endDate}>{(controlProps) => <Input {...controlProps} type="date" value={form.endDate} onChange={(event) => setForm((previous) => ({ ...previous, endDate: event.target.value }))} disabled={saving} />}</FormField>
+                </form>
+            </Dialog>
         </div>
     );
 };

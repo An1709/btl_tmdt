@@ -1,6 +1,7 @@
 import type { Product } from "@/types/product";
 import ProductCard from "./ProductCard";
 import { Link } from "react-router";
+import { EmptyState } from "@/components/ui/feedback-state";
 
 interface ProductListProps {
     products: Product[];
@@ -12,47 +13,28 @@ interface ProductListProps {
 
 const ProductList = ({ products, title, subtitle, viewAllLink, onWishlistChange }: ProductListProps) => {
     if (products.length === 0) {
-        return (
-            <div className="text-center py-16 text-muted-foreground">
-                <div className="text-5xl mb-4">🐾</div>
-                <p className="font-semibold">Không tìm thấy sản phẩm nào.</p>
-            </div>
-        );
+        return <EmptyState title="Không tìm thấy sản phẩm nào" description="Hãy thử lại với một lựa chọn khác." />;
     }
 
     return (
-        <section className="py-4">
-            {/* Section Header */}
+        <section className="py-1" aria-label={title ?? "Sản phẩm"}>
             {title && (
-                <div className="flex items-end justify-between mb-6">
+                <div className="mb-5 flex items-end justify-between gap-4">
                     <div>
                         <h2 className="section-title">{title}</h2>
-                        {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+                        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
                     </div>
                     {viewAllLink && (
-                        <Link
-                            to={viewAllLink}
-                            className="text-sm font-semibold text-[var(--pet-coral)] hover:underline underline-offset-2 flex items-center gap-1 shrink-0"
-                        >
-                            Xem tất cả
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
+                        <Link to={viewAllLink} className="shrink-0 text-sm font-semibold text-primary underline-offset-4 hover:underline">
+                            Xem tất cả <span aria-hidden="true">→</span>
                         </Link>
                     )}
                 </div>
             )}
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {products.map((product, idx) => (
-                    <div
-                        key={product.id}
-                        className="animate-fade-in-up"
-                        style={{ animationDelay: `${idx * 0.07}s` }}
-                    >
-                        <ProductCard product={product} onWishlistChange={onWishlistChange} />
-                    </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {products.map((product) => (
+                    <ProductCard key={product.id} product={product} onWishlistChange={onWishlistChange} />
                 ))}
             </div>
         </section>

@@ -1,5 +1,18 @@
 import WarrantyRequest from '../models/WarrantyRequest.js';
 import Order from '../models/Order.js';
+import mongoose from 'mongoose';
+import { uploadImage } from '../utils/cloudinaryUpload.js';
+
+const WARRANTY_STATUSES = ['Pending', 'Approved', 'Rejected', 'Completed'];
+
+const normalizeImageUrls = (images) => {
+    const values = Array.isArray(images) ? images : images ? [images] : [];
+    return values.filter((value) => typeof value === 'string' && value.trim()).slice(0, 5);
+};
+
+const toPublicUploadUrl = (req, imageUrl) => imageUrl.startsWith('/uploads/')
+    ? `${req.protocol}://${req.get('host')}${imageUrl}`
+    : imageUrl;
 
 // @desc    Gửi yêu cầu bảo hành (User)
 // @route   POST /api/warranty
@@ -7,10 +20,26 @@ export const createWarrantyRequest = async (req, res) => {
     const { orderId, productId, reason, images } = req.body;
 
     try {
+        if (!mongoose.isValidObjectId(orderId) || !mongoose.isValidObjectId(productId)) {
+            return res.status(400).json({ message: 'Đơn hàng hoặc sản phẩm không hợp lệ.' });
+        }
+
+        const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+        if (!normalizedReason) {
+            return res.status(400).json({ message: 'Vui lòng mô tả vấn đề cần bảo hành.' });
+        }
+
         // Kiểm tra xem đơn hàng có tồn tại và thuộc về user này không
         const order = await Order.findOne({ _id: orderId, user: req.user._id });
         if (!order) {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc bạn không có quyền' });
+        }
+
+        const belongsToOrder = order.orderItems.some(
+            (item) => item.product?.toString() === productId,
+        );
+        if (!belongsToOrder) {
+            return res.status(400).json({ message: 'Sản phẩm không thuộc đơn hàng đã chọn.' });
         }
 
         // Kiểm tra xem đã có yêu cầu bảo hành nào cho sản phẩm này trong đơn hàng này chưa (tránh spam)
@@ -23,18 +52,32 @@ export const createWarrantyRequest = async (req, res) => {
             return res.status(400).json({ message: 'Bạn đã gửi yêu cầu bảo hành cho sản phẩm này rồi.' });
         }
 
+        const uploadedImages = await Promise.all(
+            (req.files || []).map((file, index) => uploadImage(file, 'petmart/warranty', {
+                publicId: `warranty_${req.user._id}_${Date.now()}_${index}`,
+            })),
+        );
+        const imageUrls = [
+            ...normalizeImageUrls(images),
+            ...uploadedImages.map((imageUrl) => toPublicUploadUrl(req, imageUrl)),
+        ].slice(0, 5);
+
         const warrantyRequest = await WarrantyRequest.create({
             user: req.user._id,
             order: orderId,
             product: productId,
-            reason,
-            images,
+            reason: normalizedReason,
+            images: imageUrls,
             status: 'Pending'
         });
 
-        res.status(201).json(warrantyRequest);
+        return res.status(201).json(warrantyRequest);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        if (error.message === 'CLOUDINARY_CONFIG_MISSING') {
+            return res.status(500).json({ message: 'Chưa cấu hình dịch vụ lưu ảnh minh chứng.' });
+        }
+
+        return res.status(500).json({ message: 'Không thể gửi yêu cầu bảo hành. Vui lòng thử lại.' });
     }
 };
 
@@ -56,8 +99,8 @@ export const getMyWarrantyRequests = async (req, res) => {
 export const getAllWarrantyRequests = async (req, res) => {
     try {
         const requests = await WarrantyRequest.find({})
-            .populate('user', 'fullName email phone')
-            .populate('product', 'name price')
+            .populate('user', 'username displayName email phone')
+            .populate('product', 'name price image')
             .sort({ createdAt: -1 });
         res.json(requests);
     } catch (error) {
@@ -72,6 +115,10 @@ export const updateWarrantyStatus = async (req, res) => {
     // status: 'Approved', 'Rejected', 'Completed'
 
     try {
+        if (!WARRANTY_STATUSES.includes(status)) {
+            return res.status(400).json({ message: 'Trạng thái bảo hành không hợp lệ.' });
+        }
+
         const request = await WarrantyRequest.findById(req.params.id);
 
         if (!request) {

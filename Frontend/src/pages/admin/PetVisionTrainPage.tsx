@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { SkeletonBlock } from "@/components/common/Loading";
+import { AdminPageHeader, AdminPanel } from "@/components/features/admin/AdminSurface";
+import RecognitionClassList from "@/components/features/admin/RecognitionClassList";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { ErrorState } from "@/components/ui/feedback-state";
 import { adminPetVisionService, type PetVisionClassInfo, type PetVisionModelStatus } from "@/services/adminPetVisionService";
 import { formatDateTime } from "@/utils/format";
 
@@ -15,13 +23,13 @@ const statusLabel: Record<string, string> = {
     failed: "Lỗi mô hình",
 };
 
-const statusBadgeClass: Record<string, string> = {
-    ready: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    trained: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    training: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-    training_requested: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-    failed: "bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300",
-    not_trained: "bg-muted text-muted-foreground",
+const statusTone: Record<string, "neutral" | "success" | "warning" | "error" | "info"> = {
+    ready: "success",
+    trained: "success",
+    training: "info",
+    training_requested: "warning",
+    failed: "error",
+    not_trained: "neutral",
 };
 
 const formatPercent = (value: number | null | undefined) => {
@@ -50,10 +58,26 @@ const getClassList = (status: PetVisionModelStatus): PetVisionClassInfo[] => {
 const PetVisionTrainPage = () => {
     const [status, setStatus] = useState<PetVisionModelStatus | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [trainingLoading, setTrainingLoading] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
     const [manualCommand, setManualCommand] = useState("");
+
+    const loadStatus = useCallback(async (silent = false) => {
+        if (silent) setRefreshing(true);
+        else setLoading(true);
+        try {
+            setStatus(await adminPetVisionService.getStatus());
+            setError("");
+        } catch (requestError) {
+            setError(getErrorMessage(requestError));
+        } finally {
+            if (silent) setRefreshing(false);
+            else setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -77,6 +101,31 @@ const PetVisionTrainPage = () => {
         };
     }, []);
 
+    useEffect(() => {
+        if (status?.status !== "training" && status?.status !== "training_requested") return;
+        let cancelled = false;
+        let requestInFlight = false;
+        const intervalId = window.setInterval(async () => {
+            if (requestInFlight) return;
+            requestInFlight = true;
+            try {
+                const nextStatus = await adminPetVisionService.getStatus();
+                if (!cancelled) {
+                    setStatus(nextStatus);
+                    setError("");
+                }
+            } catch (requestError) {
+                if (!cancelled) setError(getErrorMessage(requestError));
+            } finally {
+                requestInFlight = false;
+            }
+        }, 15000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [status?.status]);
+
     const classList = useMemo(() => status ? getClassList(status) : [], [status]);
 
     const cards = useMemo(() => {
@@ -87,8 +136,8 @@ const PetVisionTrainPage = () => {
             { label: "Phiên bản mô hình", value: status.modelVersion || "Chưa có" },
             { label: "File mô hình", value: status.modelFile || "Chưa có" },
             { label: "Số lớp nhận diện", value: String(status.classCount || classList.length) },
-            { label: "Nguồn lớp", value: status.classSource === "labels.json" ? "labels.json" : "dataset/train" },
-            { label: "Dataset hiện tại", value: status.dataset || "Backend/ml/dataset" },
+            { label: "Nguồn lớp", value: status.classSource || "Chưa có" },
+            { label: "Dataset hiện tại", value: status.dataset || "Chưa có" },
         ];
     }, [classList.length, status]);
 
@@ -108,9 +157,6 @@ const PetVisionTrainPage = () => {
     }, [status]);
 
     const handleTrain = async () => {
-        const confirmed = window.confirm("Quá trình huấn luyện có thể mất nhiều thời gian. Bạn có chắc muốn tiếp tục?");
-        if (!confirmed) return;
-
         setTrainingLoading(true);
         setMessage("");
         setManualCommand("");
@@ -121,6 +167,7 @@ const PetVisionTrainPage = () => {
             setMessage(response.message || "Đã gửi yêu cầu huấn luyện.");
             setManualCommand(response.manualCommand || "");
             if (response.status) setStatus(response.status);
+            setConfirmOpen(false);
         } catch (requestError) {
             setError(
                 (requestError as { response?: { data?: { message?: string } } }).response?.data?.message
@@ -131,63 +178,35 @@ const PetVisionTrainPage = () => {
         }
     };
 
+    const trainingActive = status?.status === "training" || status?.status === "training_requested";
+    const trainingUnavailable = loading || refreshing || !status || Boolean(error);
+
     return (
         <div className="space-y-6">
-            <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-[var(--pet-coral)]">
-                    Pet Vision
-                </p>
-                <h1 className="section-title mt-2">Huấn luyện mô hình</h1>
-                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    Theo dõi trạng thái mô hình nhận diện giống chó/mèo, danh sách lớp breed-level và chỉ số huấn luyện hiện có.
-                </p>
-            </div>
+            <AdminPageHeader title="Vận hành mô hình Pet Vision" description="Theo dõi trạng thái, metadata và metrics do backend cung cấp; giao diện không suy đoán tiến độ hoặc chất lượng mô hình." actions={<Button type="button" variant="outline" loading={refreshing} disabled={loading} onClick={() => void loadStatus(true)}><RefreshCw aria-hidden="true" />Làm mới trạng thái</Button>} />
 
-            <section className="rounded-2xl border border-border bg-white p-5 shadow-sm dark:bg-card">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <h2 className="font-bold text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                            Trạng thái Pet Vision
-                        </h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            Lớp nhận diện được đọc từ labels.json; nếu thiếu, hệ thống sẽ quét Backend/ml/dataset/train.
-                        </p>
-                    </div>
-                    {status && (
-                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${statusBadgeClass[status.status] ?? "bg-muted text-muted-foreground"}`}>
-                            {statusLabel[status.status] ?? status.status}
-                        </span>
-                    )}
-                </div>
+            <AdminPanel title="Trạng thái Pet Vision" description="Lớp nhận diện và metadata bên dưới được hiển thị trực tiếp từ status endpoint." action={status && <Badge tone={statusTone[status.status] ?? "neutral"}>{statusLabel[status.status] ?? status.status}</Badge>}>
 
                 {loading && (
-                    <div className="mt-6 rounded-xl bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-                        Đang tải trạng thái mô hình...
-                    </div>
+                    <div className="space-y-3" aria-label="Đang tải trạng thái mô hình" aria-busy="true"><SkeletonBlock className="h-16 rounded-md" /><SkeletonBlock className="h-32 rounded-md" /></div>
                 )}
 
                 {!loading && error && (
-                    <div className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
-                        {error}
-                    </div>
+                    <ErrorState title="Không thể tải trạng thái mô hình" description={error} action={<Button type="button" variant="outline" onClick={() => void loadStatus()}>Thử lại</Button>} />
                 )}
 
                 {!loading && status && (
                     <>
-                        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
                             {cards.map((card) => (
-                                <div key={card.label} className="rounded-xl border border-border bg-background p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                        {card.label}
-                                    </p>
-                                    <p className="mt-2 text-lg font-black text-foreground">
-                                        {card.value}
-                                    </p>
+                                <div key={card.label} className="border-b border-divider pb-3">
+                                    <dt className="text-xs font-medium text-muted-foreground">{card.label}</dt>
+                                    <dd className="mt-1 break-words text-base font-semibold text-text-strong">{card.value}</dd>
                                 </div>
                             ))}
-                        </div>
+                        </dl>
 
-                        <div className="mt-6 rounded-xl bg-muted/20 p-4">
+                        <section className="mt-6 border-t border-divider pt-5">
                             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="text-sm font-bold text-foreground">Chỉ số huấn luyện</p>
                                 <p className="text-xs text-muted-foreground">Backend/ml/outputs/metrics.json</p>
@@ -198,79 +217,48 @@ const PetVisionTrainPage = () => {
                                     Chưa có dữ liệu metrics. Hãy kiểm tra Backend/ml/outputs/metrics.json sau khi huấn luyện.
                                 </p>
                             ) : (
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                    {metricCards.map((item) => (
-                                        <div key={item.label} className="rounded-xl border border-border bg-background p-3">
-                                            <p className="text-xs text-muted-foreground">{item.label}</p>
-                                            <p className="mt-1 font-bold text-foreground">{item.value}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-6 rounded-xl bg-muted/20 p-4">
-                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                <p className="text-sm font-bold text-foreground">Các lớp nhận diện</p>
-                                <p className="text-xs text-muted-foreground">{classList.length} lớp</p>
-                            </div>
-
-                            {classList.length === 0 ? (
-                                <p className="mt-4 rounded-lg bg-background px-4 py-5 text-center text-sm text-muted-foreground">
-                                    Chưa tìm thấy lớp nhận diện. Hãy kiểm tra Backend/ml/dataset/train hoặc labels.json.
-                                </p>
-                            ) : (
-                                <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-border bg-background p-3">
-                                    <div className="flex flex-wrap gap-2">
-                                        {classList.map((item) => (
-                                            <span
-                                                key={`${item.index}-${item.label}`}
-                                                className="rounded-full bg-[var(--pet-coral)]/10 px-3 py-1 text-xs font-semibold text-[var(--pet-coral)]"
-                                                title={item.label}
-                                            >
-                                                {item.displayName}
-                                            </span>
+                                    <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
+                                        {metricCards.map((item) => (
+                                            <div key={item.label}>
+                                                <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                                                <dd className="mt-1 font-semibold text-text-strong">{item.value}</dd>
+                                            </div>
                                         ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                                    </dl>
+                                )}
+                        </section>
+
+                        <RecognitionClassList classes={classList} />
                     </>
                 )}
-            </section>
+            </AdminPanel>
 
-            <section className="rounded-2xl border border-border bg-white p-5 shadow-sm dark:bg-card">
-                <h2 className="font-bold text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                    Điều khiển huấn luyện
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                    Không chạy TensorFlow/PyTorch nặng trực tiếp trong request web. Hãy huấn luyện local rồi triển khai file model đã xuất.
-                </p>
-
-                <button
-                    type="button"
-                    onClick={handleTrain}
-                    disabled={trainingLoading}
-                    className="btn-pet-primary mt-5 px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    {trainingLoading ? "Đang gửi yêu cầu..." : "Bắt đầu huấn luyện"}
-                </button>
+            <AdminPanel title="Điều khiển huấn luyện" description="Backend hiện nhận yêu cầu và có thể trả về lệnh huấn luyện thủ công. Không có ETA hoặc phần trăm tiến độ trong contract hiện tại.">
+                <div className="flex flex-col items-start gap-3">
+                    <Button type="button" disabled={trainingActive || trainingUnavailable} onClick={() => setConfirmOpen(true)}>{trainingActive ? "Đang có yêu cầu huấn luyện" : "Gửi yêu cầu huấn luyện"}</Button>
+                    {trainingActive && <p className="text-sm text-muted-foreground">Trạng thái sẽ được kiểm tra lại tối đa mỗi 15 giây và dừng tự động khi công việc kết thúc.</p>}
+                    {trainingUnavailable && !trainingActive && <p className="text-sm text-muted-foreground">Cần tải thành công trạng thái hiện tại trước khi gửi yêu cầu mới.</p>}
+                </div>
 
                 {message && (
-                    <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+                    <div role="status" className="mt-5 rounded-md border border-success/25 bg-success/10 px-4 py-3 text-sm text-success">
                         {message}
                     </div>
                 )}
 
                 {manualCommand && (
-                    <div className="mt-4 rounded-xl bg-muted/30 p-4">
-                        <p className="text-sm font-bold text-foreground">Lệnh huấn luyện thủ công</p>
-                        <code className="mt-2 block overflow-x-auto rounded-lg bg-background px-3 py-2 text-sm text-muted-foreground">
+                    <div className="mt-4 rounded-md border border-border bg-surface-subtle p-4">
+                        <p className="text-sm font-semibold text-text-strong">Lệnh huấn luyện thủ công do backend trả về</p>
+                        <code className="mt-2 block overflow-x-auto rounded-md bg-surface px-3 py-2 text-sm text-foreground">
                             {manualCommand}
                         </code>
                     </div>
                 )}
-            </section>
+            </AdminPanel>
+
+            <Dialog open={confirmOpen} onOpenChange={(open) => { if (!trainingLoading) setConfirmOpen(open); }} title="Gửi yêu cầu huấn luyện" description="Đây là thao tác vận hành có thể dẫn đến quy trình chạy dài bên ngoài request web." size="sm" closeOnBackdrop={!trainingLoading} closeOnEscape={!trainingLoading} footer={<DialogFooter><Button type="button" variant="outline" disabled={trainingLoading} onClick={() => setConfirmOpen(false)}>Hủy</Button><Button type="button" loading={trainingLoading} onClick={() => void handleTrain()}>Gửi yêu cầu</Button></DialogFooter>}>
+                <p className="text-sm leading-6 text-muted-foreground">PetMart sẽ gọi đúng endpoint huấn luyện hiện tại một lần. Giao diện chỉ hiển thị status, message và manual command thực sự được backend trả về.</p>
+            </Dialog>
         </div>
     );
 };

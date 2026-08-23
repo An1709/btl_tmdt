@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import DataTable, { type Column } from "@/components/features/admin/DataTable";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
+import DataTable, { DataTableActionGroup, DataTableConfirmAction, type Column } from "@/components/features/admin/DataTable";
+import { AdminPageHeader, AdminPanel } from "@/components/features/admin/AdminSurface";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import Pagination from "@/components/common/Pagination";
 import { postService, type PostPayload } from "@/services/postService";
 import type { Post } from "@/types/post";
 import { IMAGE_ASSETS } from "@/utils/constants";
@@ -21,6 +29,8 @@ const emptyForm: BlogFormState = {
     content: "",
 };
 
+const PAGE_SIZE = 20;
+
 const getErrorMessage = (err: unknown, fallback: string) => {
     if (err && typeof err === "object" && "response" in err) {
         return (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? fallback;
@@ -34,20 +44,13 @@ const isValidImage = (value: string) => {
     return !image || image.startsWith("http://") || image.startsWith("https://") || image.startsWith("/");
 };
 
-const editableThumbnail = (post: Post) => {
-    const generatedListFallback = `https://images.unsplash.com/photo-${post._id}`;
-    const generatedDetailFallback = "https://images.unsplash.com/photo-1450778869180-41d0601e046e";
-
-    if (post.coverImage.startsWith(generatedListFallback) || post.coverImage.startsWith(generatedDetailFallback)) {
-        return "";
-    }
-
-    return post.coverImage;
-};
-
 const BlogManagePage = () => {
     const [posts, setPosts] = useState<Post[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [formOpen, setFormOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
@@ -55,15 +58,22 @@ const BlogManagePage = () => {
 
     const loadPosts = useCallback(async () => {
         setLoading(true);
+        setLoadError(null);
         try {
-            const res = await postService.getPosts(1, 100);
+            const res = await postService.getPosts(page, PAGE_SIZE);
             setPosts(res.data);
+            setTotal(res.total);
+            setTotalPages(res.totalPages);
+
+            if (res.totalPages > 0 && page > res.totalPages) {
+                setPage(res.totalPages);
+            }
         } catch {
-            toast.error("Không thể tải danh sách bài viết.");
+            setLoadError("Không thể tải danh sách bài viết. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [page]);
 
     useEffect(() => {
         loadPosts();
@@ -80,17 +90,22 @@ const BlogManagePage = () => {
         setForm({
             title: post.title,
             excerpt: post.excerpt,
-            thumbnail: editableThumbnail(post),
+            thumbnail: post.coverImage,
             tags: post.tags.join(", "),
             content: post.content,
         });
         setFormOpen(true);
     };
 
-    const closeForm = () => {
+    const resetForm = () => {
         setFormOpen(false);
         setEditingPost(null);
         setForm(emptyForm);
+    };
+
+    const closeForm = () => {
+        if (saving) return;
+        resetForm();
     };
 
     const buildPayload = (): PostPayload | null => {
@@ -121,16 +136,22 @@ const BlogManagePage = () => {
 
         try {
             setSaving(true);
+            const isCreating = !editingPost;
+
             if (editingPost) {
-                const updated = await postService.updatePost(editingPost._id, payload);
-                setPosts((prev) => prev.map((post) => post._id === updated._id ? updated : post));
+                await postService.updatePost(editingPost._id, payload);
                 toast.success("Đã cập nhật bài viết.");
             } else {
-                const created = await postService.createPost(payload);
-                setPosts((prev) => [created, ...prev]);
+                await postService.createPost(payload);
                 toast.success("Đã tạo bài viết.");
             }
-            closeForm();
+
+            resetForm();
+            if (isCreating && page !== 1) {
+                setPage(1);
+            } else {
+                await loadPosts();
+            }
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, "Không thể lưu bài viết. Vui lòng thử lại."));
         } finally {
@@ -139,26 +160,32 @@ const BlogManagePage = () => {
     };
 
     const handleDelete = async (post: Post) => {
-        if (!confirm(`Bạn có chắc muốn xóa bài viết "${post.title}"?`)) return;
-
         try {
             await postService.deletePost(post._id);
-            setPosts((prev) => prev.filter((item) => item._id !== post._id));
             toast.success("Đã xóa bài viết.");
+
+            if (posts.length === 1 && page > 1) {
+                setPage((current) => current - 1);
+            } else {
+                await loadPosts();
+            }
+
+            return true;
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, "Không thể xóa bài viết. Vui lòng thử lại."));
+            return false;
         }
     };
 
-    const columns: Column<Post>[] = [
+    const columns: Column<Post>[] = useMemo(() => [
         {
             key: "title",
             header: "Bài viết",
             render: (post) => (
-                <div className="flex items-center gap-3 min-w-64">
-                    <img src={post.coverImage || IMAGE_ASSETS.placeholder} alt={post.title} className="w-12 h-12 rounded-xl object-cover border border-border" />
+                <div className="flex min-w-64 items-center gap-3">
+                    <img src={post.coverImage || IMAGE_ASSETS.placeholder} alt="" className="size-12 rounded-md border border-border object-cover" />
                     <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground line-clamp-1">{post.title}</p>
+                        <p className="text-sm font-semibold text-text-strong line-clamp-1">{post.title}</p>
                         <p className="text-xs text-muted-foreground line-clamp-1">{post.slug}</p>
                     </div>
                 </div>
@@ -167,6 +194,7 @@ const BlogManagePage = () => {
         {
             key: "author",
             header: "Tác giả",
+            hideOnMobile: true,
             render: (post) => (
                 <span className="text-sm text-foreground">
                     {post.author?.displayName || post.author?.username || "Admin"}
@@ -179,7 +207,7 @@ const BlogManagePage = () => {
             render: (post) => (
                 <div className="flex flex-wrap gap-1">
                     {post.tags.slice(0, 2).map((tag) => (
-                        <span key={tag} className="badge-new">{tag}</span>
+                        <Badge key={tag} tone="neutral">{tag}</Badge>
                     ))}
                     {post.tags.length > 2 && <span className="text-xs text-muted-foreground">+{post.tags.length - 2}</span>}
                 </div>
@@ -188,6 +216,7 @@ const BlogManagePage = () => {
         {
             key: "views",
             header: "Lượt xem",
+            hideOnMobile: true,
             render: (post) => <span className="text-sm font-semibold text-foreground">{post.viewCount}</span>,
         },
         {
@@ -195,42 +224,36 @@ const BlogManagePage = () => {
             header: "Ngày tạo",
             render: (post) => <span className="text-sm text-muted-foreground">{new Date(post.createdAt).toLocaleDateString("vi-VN")}</span>,
         },
-    ];
+    ], []);
+
+    const thumbnailError = form.thumbnail.trim() && !isValidImage(form.thumbnail)
+        ? "Dùng URL http(s) hoặc đường dẫn bắt đầu bằng /."
+        : undefined;
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="section-title">
-                    Quản Lý Bài Viết ({loading ? "..." : posts.length})
-                </h1>
-                <button onClick={openCreateForm} className="btn-pet-primary">+ Thêm bài viết</button>
-            </div>
+            <AdminPageHeader
+                title={`Quản lý bài viết${loading ? "" : ` (${total})`}`}
+                description="Tạo và duy trì nội dung blog bằng định dạng bài viết hiện tại."
+                actions={<Button type="button" onClick={openCreateForm}><Plus aria-hidden="true" />Thêm bài viết</Button>}
+            />
 
             {formOpen && (
-                <div className="bg-white dark:bg-card rounded-2xl border border-border p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                        <h2 className="font-bold text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                            {editingPost ? "Sửa bài viết" : "Thêm bài viết"}
-                        </h2>
-                        <button onClick={closeForm} className="text-xs px-3 py-1.5 bg-muted rounded-lg font-semibold">
-                            Đóng
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="Tiêu đề *" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
-                        <input className="px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="URL ảnh đại diện" value={form.thumbnail} onChange={(e) => setForm((prev) => ({ ...prev, thumbnail: e.target.value }))} />
-                        <input className="md:col-span-2 px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm" placeholder="Thẻ, cách nhau bằng dấu phẩy" value={form.tags} onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))} />
-                        <textarea className="md:col-span-2 px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm resize-none" rows={2} placeholder="Tóm tắt" value={form.excerpt} onChange={(e) => setForm((prev) => ({ ...prev, excerpt: e.target.value }))} />
-                        <textarea className="md:col-span-2 px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm resize-y min-h-56" rows={8} placeholder="Nội dung *" value={form.content} onChange={(e) => setForm((prev) => ({ ...prev, content: e.target.value }))} />
-                        <div className="md:col-span-2 flex justify-end gap-2">
-                            <button type="button" onClick={closeForm} className="btn-pet-secondary">Hủy</button>
-                            <button type="submit" disabled={saving} className="btn-pet-primary disabled:opacity-50">
-                                {saving ? "Đang lưu..." : editingPost ? "Cập nhật" : "Tạo bài viết"}
-                            </button>
-                        </div>
+                <AdminPanel
+                    title={editingPost ? "Chỉnh sửa bài viết" : "Thêm bài viết"}
+                    description="Nội dung được lưu theo đúng định dạng văn bản hiện tại; không có trình soạn thảo mới hoặc chuyển đổi dữ liệu."
+                    action={<Button type="button" variant="ghost" size="sm" onClick={closeForm} disabled={saving}>Đóng</Button>}
+                >
+                    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <FormField label="Tiêu đề" required>{(controlProps) => <Input {...controlProps} data-autofocus value={form.title} onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField label="URL ảnh đại diện" error={thumbnailError} description="Chỉ dùng URL hoặc đường dẫn hiện được API hỗ trợ.">{(controlProps) => <Input {...controlProps} type="url" inputMode="url" value={form.thumbnail} onChange={(event) => setForm((previous) => ({ ...previous, thumbnail: event.target.value }))} placeholder="https://…" disabled={saving} />}</FormField>
+                        {form.thumbnail.trim() && isValidImage(form.thumbnail) && <img src={form.thumbnail.trim()} alt="Xem trước ảnh đại diện" className="h-40 w-56 rounded-md border border-border object-cover" />}
+                        <FormField className="md:col-span-2" label="Thẻ" description="Nhập các thẻ, cách nhau bằng dấu phẩy.">{(controlProps) => <Input {...controlProps} value={form.tags} onChange={(event) => setForm((previous) => ({ ...previous, tags: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField className="md:col-span-2" label="Tóm tắt">{(controlProps) => <Textarea {...controlProps} rows={3} value={form.excerpt} onChange={(event) => setForm((previous) => ({ ...previous, excerpt: event.target.value }))} disabled={saving} />}</FormField>
+                        <FormField className="md:col-span-2" label="Nội dung bài viết" required>{(controlProps) => <Textarea {...controlProps} rows={12} className="min-h-72 resize-y leading-7" value={form.content} onChange={(event) => setForm((previous) => ({ ...previous, content: event.target.value }))} disabled={saving} />}</FormField>
+                        <div className="flex flex-col-reverse justify-end gap-2 border-t border-divider pt-5 sm:col-span-2 sm:flex-row"><Button type="button" variant="outline" onClick={closeForm} disabled={saving}>Hủy</Button><Button type="submit" loading={saving}>{editingPost ? "Cập nhật bài viết" : "Tạo bài viết"}</Button></div>
                     </form>
-                </div>
+                </AdminPanel>
             )}
 
             <DataTable
@@ -238,14 +261,13 @@ const BlogManagePage = () => {
                 data={posts}
                 keyExtractor={(post) => post._id}
                 isLoading={loading}
-                emptyText="Không có bài viết nào."
-                actions={(post) => (
-                    <div className="flex gap-2 justify-end">
-                        <button onClick={() => openEditForm(post)} className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all font-semibold">Sửa</button>
-                        <button onClick={() => handleDelete(post)} className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all font-semibold">Xóa</button>
-                    </div>
-                )}
+                error={loadError ? { description: loadError, action: <Button type="button" variant="outline" size="sm" onClick={() => void loadPosts()}>Thử lại</Button> } : null}
+                emptyTitle="Chưa có bài viết"
+                emptyText="Tạo bài viết đầu tiên để bắt đầu nội dung cho cửa hàng."
+                tableLabel="Danh sách bài viết"
+                actions={(post) => <DataTableActionGroup><Button type="button" variant="outline" size="sm" onClick={() => openEditForm(post)}>Sửa</Button><DataTableConfirmAction label="Xóa" title="Xóa bài viết" description={`Bạn sắp xóa “${post.title}”. Hành động này không thể hoàn tác.`} confirmLabel="Xóa bài viết" onConfirm={() => handleDelete(post)} /></DataTableActionGroup>}
             />
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
     );
 };

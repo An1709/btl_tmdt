@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/stores/useAuthStore";
-import axios from "axios";
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "@/utils/constants";
 
 //file này dùng để cấu hình axios instance với các interceptor để tự động thêm token xác thực vào header của các yêu cầu và xử lý làm mới token khi hết hạn.  
@@ -8,6 +8,25 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
+
+let refreshRequest: Promise<string> | null = null;
+
+const getRefreshedAccessToken = () => {
+  if (!refreshRequest) {
+    refreshRequest = api
+      .post<{ accessToken: string }>("/auth/refresh", {}, { withCredentials: true })
+      .then((response) => response.data.accessToken)
+      .finally(() => {
+        refreshRequest = null;
+      });
+  }
+
+  return refreshRequest;
+};
 
 api.interceptors.request.use(
   (config) => {
@@ -23,18 +42,23 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetryableRequestConfig | undefined;
+    const requestUrl = originalRequest?.url ?? "";
+
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
 
     // Skip auth routes
     if (
-      originalRequest.url.includes("/auth/signin") ||
-      originalRequest.url.includes("/auth/signup") ||
-      originalRequest.url.includes("/auth/verify-email") ||
-      originalRequest.url.includes("/auth/resend-verification-code") ||
-      originalRequest.url.includes("/auth/forgot-password") ||
-      originalRequest.url.includes("/auth/reset-password") ||
-      originalRequest.url.includes("/auth/refresh")
+      requestUrl.includes("/auth/signin") ||
+      requestUrl.includes("/auth/signup") ||
+      requestUrl.includes("/auth/verify-email") ||
+      requestUrl.includes("/auth/resend-verification-code") ||
+      requestUrl.includes("/auth/forgot-password") ||
+      requestUrl.includes("/auth/reset-password") ||
+      requestUrl.includes("/auth/refresh")
     ) {
       return Promise.reject(error);
     }
@@ -43,8 +67,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const res = await api.post("/auth/refresh", {}, { withCredentials: true });
-        const accessToken = res.data.accessToken; // read directly, not destructure from .accessToken
+        const accessToken = await getRefreshedAccessToken();
         useAuthStore.getState().setAccessToken(accessToken);
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);

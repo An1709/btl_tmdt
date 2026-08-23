@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useId, useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -232,6 +232,54 @@ function FieldError({
   )
 }
 
+type FormFieldControlProps = {
+  id: string
+  "aria-describedby"?: string
+  "aria-invalid"?: true
+}
+
+type FormFieldProps = {
+  label: React.ReactNode
+  children: (controlProps: FormFieldControlProps) => React.ReactNode
+  description?: React.ReactNode
+  error?: React.ReactNode
+  id?: string
+  required?: boolean
+  className?: string
+}
+
+function FormField({
+  label,
+  children,
+  description,
+  error,
+  id: providedId,
+  required = false,
+  className,
+}: FormFieldProps) {
+  const generatedId = useId()
+  const id = providedId ?? `field-${generatedId.replace(/:/g, "")}`
+  const descriptionId = description ? `${id}-description` : undefined
+  const errorId = error ? `${id}-error` : undefined
+  const describedBy = [descriptionId, errorId].filter(Boolean).join(" ") || undefined
+
+  return (
+    <Field data-invalid={Boolean(error)} className={cn("gap-2", className)}>
+      <FieldLabel htmlFor={id}>
+        {label}
+        {required && <span aria-hidden="true" className="text-destructive"> *</span>}
+      </FieldLabel>
+      {children({
+        id,
+        "aria-describedby": describedBy,
+        "aria-invalid": error ? true : undefined,
+      })}
+      {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
+      {error && <FieldError id={errorId}>{error}</FieldError>}
+    </Field>
+  )
+}
+
 export {
   Field,
   FieldLabel,
@@ -243,4 +291,5 @@ export {
   FieldSet,
   FieldContent,
   FieldTitle,
+  FormField,
 }

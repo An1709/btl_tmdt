@@ -1,23 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router";
+import { ArrowLeft, Award, CreditCard, MapPin, Package } from "lucide-react";
+
 import Sidebar from "@/components/common/Sidebar";
+import { SkeletonBlock } from "@/components/common/Loading";
+import { OrderStatusBadge, PaymentStatusBadge } from "@/components/features/order/OrderStatusBadge";
 import { orderService } from "@/services/orderService";
 import type { Order } from "@/types/order";
 import { formatCurrency, formatDate } from "@/utils/format";
-import Loading from "@/components/common/Loading";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { ErrorState } from "@/components/ui/feedback-state";
+import { FormField } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import OrderStatusTimeline from "@/components/features/order/OrderStatusTimeline";
-
-// Backend status values are PascalCase: Pending → Processing → Shipping → Delivered
-const STATUS_STEPS = ["Pending", "Processing", "Shipping", "Delivered"] as const;
-
-const STATUS_LABELS: Record<string, string> = {
-    Pending:    "Chờ xác nhận",
-    Processing: "Đang xử lý",
-    Shipping:   "Đang giao",
-    Delivered:  "Đã giao",
-    Cancelled:  "Đã hủy",
-};
+import { notify } from "@/lib/notify";
 
 const getErrorMessage = (err: unknown, fallback: string) => {
     if (err && typeof err === "object" && "response" in err) {
@@ -40,6 +37,26 @@ const getShippingAddressText = (order: Order) => {
     ].filter(Boolean).join(", ");
 };
 
+const getOrderReference = (order: Order) => order._id.slice(-8).toUpperCase();
+
+const getPaymentMethodLabel = (method: Order["paymentMethod"]) => (
+    method === "cod" ? "Thanh toán khi nhận hàng" : "VNPay"
+);
+
+const OrderDetailSkeleton = () => (
+    <div className="space-y-5" aria-label="Đang tải chi tiết đơn hàng">
+        <div className="flex items-start justify-between gap-4">
+            <div className="space-y-2"><SkeletonBlock className="h-5 w-40" /><SkeletonBlock className="h-4 w-52" /></div>
+            <SkeletonBlock className="h-6 w-28 rounded-full" />
+        </div>
+        <SkeletonBlock className="h-48 w-full" />
+        <div className="grid gap-5 lg:grid-cols-3">
+            <SkeletonBlock className="h-72 w-full lg:col-span-2" />
+            <SkeletonBlock className="h-72 w-full" />
+        </div>
+    </div>
+);
+
 const OrderDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const [order, setOrder] = useState<Order | null>(null);
@@ -48,19 +65,46 @@ const OrderDetailPage = () => {
     const [showCancelDialog, setShowCancelDialog] = useState(false);
     const [cancelReason, setCancelReason] = useState("");
     const [requestingCancel, setRequestingCancel] = useState(false);
+    const requestSequenceRef = useRef(0);
+
+    const loadOrder = useCallback(async () => {
+        const requestSequence = ++requestSequenceRef.current;
+
+        if (!id) {
+            setOrder(null);
+            setError("Không tìm thấy mã đơn hàng.");
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        setShowCancelDialog(false);
+        setCancelReason("");
+        setRequestingCancel(false);
+
+        try {
+            const nextOrder = await orderService.getOrderById(id);
+            if (requestSequence !== requestSequenceRef.current) return;
+
+            setOrder(nextOrder);
+        } catch {
+            if (requestSequence !== requestSequenceRef.current) return;
+
+            setOrder(null);
+            setError("Không thể tải đơn hàng. Vui lòng thử lại.");
+        } finally {
+            if (requestSequence === requestSequenceRef.current) setLoading(false);
+        }
+    }, [id]);
 
     useEffect(() => {
-        if (!id) return;
-        setLoading(true);
-        orderService
-            .getOrderById(id)
-            .then((data) => {
-                setOrder(data);
-                setError(null);
-            })
-            .catch(() => setError("Không thể tải đơn hàng. Vui lòng thử lại."))
-            .finally(() => setLoading(false));
-    }, [id]);
+        void loadOrder();
+
+        return () => {
+            requestSequenceRef.current += 1;
+        };
+    }, [loadOrder]);
 
     const canRequestCancel = order
         && ["Pending", "Processing"].includes(order.status)
@@ -69,240 +113,224 @@ const OrderDetailPage = () => {
     const handleCancelRequest = async () => {
         if (!order) return;
 
+        const requestSequence = requestSequenceRef.current;
         setRequestingCancel(true);
         try {
             const updatedOrder = await orderService.requestCancellation(order._id, cancelReason.trim());
+            if (requestSequence !== requestSequenceRef.current) return;
+
             setOrder(updatedOrder);
             setShowCancelDialog(false);
             setCancelReason("");
-            toast.success("Yêu cầu hủy đơn đã được gửi.");
+            notify.success("Yêu cầu hủy đơn đã được gửi.");
         } catch (err) {
-            toast.error(getErrorMessage(err, "Đơn hàng này không thể hủy ở trạng thái hiện tại."));
+            if (requestSequence !== requestSequenceRef.current) return;
+
+            notify.error(getErrorMessage(err, "Đơn hàng này không thể hủy ở trạng thái hiện tại."));
         } finally {
-            setRequestingCancel(false);
+            if (requestSequence === requestSequenceRef.current) setRequestingCancel(false);
         }
     };
 
-    // ── Loading state ──
     if (loading) {
         return (
-            <div className="max-w-7xl mx-auto px-4 pt-12 flex gap-8">
+            <div className="mx-auto flex max-w-7xl flex-col gap-6 px-page py-8 lg:flex-row lg:gap-8">
                 <Sidebar mode="user" />
-                <main className="flex-1"><Loading /></main>
+                <section className="min-w-0 flex-1"><OrderDetailSkeleton /></section>
             </div>
         );
     }
 
-    // ── Error state ──
     if (error || !order) {
         return (
-            <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-                <p className="text-5xl mb-4">🔍</p>
-                <h1 className="text-xl font-bold text-foreground mb-2">Không tìm thấy đơn hàng</h1>
-                <p className="text-muted-foreground mb-6">{error || "Đơn hàng không tồn tại hoặc bạn không có quyền xem."}</p>
-                <Link to="/orders" className="btn-pet-primary">← Quay lại danh sách</Link>
+            <div className="mx-auto flex max-w-7xl flex-col gap-6 px-page py-8 lg:flex-row lg:gap-8">
+                <Sidebar mode="user" />
+                <section className="min-w-0 flex-1">
+                    <ErrorState
+                        title="Không tìm thấy đơn hàng"
+                        description={error || "Đơn hàng không tồn tại hoặc bạn không có quyền xem."}
+                        action={
+                            <div className="flex flex-wrap justify-center gap-2">
+                                <Button type="button" variant="outline" onClick={() => void loadOrder()}>Thử lại</Button>
+                                <Button asChild><Link to="/orders">Quay lại đơn hàng</Link></Button>
+                            </div>
+                        }
+                    />
+                </section>
             </div>
         );
     }
 
-    const stepIdx = STATUS_STEPS.indexOf(order.status as typeof STATUS_STEPS[number]);
-
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-page py-8 lg:flex-row lg:gap-8">
             <Sidebar mode="user" />
-            <main className="flex-1">
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-3 mb-6">
-                    <Link to="/orders" className="text-muted-foreground hover:text-[var(--pet-coral)] transition-colors text-sm">
-                        ← Đơn hàng
-                    </Link>
-                    <span className="text-muted-foreground">/</span>
-                    <h1 className="text-lg font-black text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                        #{order._id.slice(-8).toUpperCase()}
-                    </h1>
-                </div>
+            <section className="min-w-0 flex-1">
+                <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <Link to="/orders" className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-text-strong">
+                            <ArrowLeft aria-hidden="true" className="size-4" />
+                            Quay lại đơn hàng
+                        </Link>
+                        <h1 className="mt-3 text-2xl font-bold tracking-tight text-text-strong">Đơn hàng #{getOrderReference(order)}</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">Đặt ngày {formatDate(order.createdAt)}</p>
+                    </div>
+                    <OrderStatusBadge status={order.status} />
+                </header>
 
                 {order.cancelStatus === "pending" && (
-                    <div className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900 p-4 mb-5">
-                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Yêu cầu hủy đơn đang chờ quản trị viên xử lý.</p>
+                    <section className="mb-5 border border-warning/25 bg-warning/10 p-4" aria-label="Trạng thái yêu cầu hủy đơn">
+                        <p className="text-sm font-semibold text-text-strong">Yêu cầu hủy đơn đang chờ duyệt</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">Quản trị viên sẽ kiểm tra yêu cầu trước khi quyết định hủy đơn.</p>
                         {order.cancelReason && (
-                            <p className="text-sm text-muted-foreground mt-1">Lý do: {order.cancelReason}</p>
+                            <p className="mt-2 text-sm text-muted-foreground">Lý do: {order.cancelReason}</p>
                         )}
-                    </div>
+                    </section>
                 )}
 
-                {/* Status tracker — only for non-cancelled orders */}
-                {order.status !== "Cancelled" && (
-                    <div className="bg-white dark:bg-card rounded-2xl border border-border p-5 mb-5">
-                        <div className="flex items-center justify-between">
-                            {STATUS_STEPS.map((step, i) => (
-                                <div key={step} className="flex items-center flex-1">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                                            i <= stepIdx
-                                                ? "bg-[var(--pet-coral)] text-white"
-                                                : "bg-muted text-muted-foreground"
-                                        }`}>
-                                            {i < stepIdx ? "✓" : i + 1}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground text-center">
-                                            {STATUS_LABELS[step]}
-                                        </span>
-                                    </div>
-                                    {i < STATUS_STEPS.length - 1 && (
-                                        <div className={`flex-1 h-1 mx-2 rounded-full ${i < stepIdx ? "bg-[var(--pet-coral)]" : "bg-muted"}`} />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                {order.cancelStatus === "rejected" && (
+                    <section className="mb-5 border border-warning/25 bg-warning/10 p-4" aria-label="Yêu cầu hủy đơn bị từ chối">
+                        <p className="text-sm font-semibold text-text-strong">Yêu cầu hủy đơn chưa được chấp thuận</p>
+                        {order.cancelRejectionReason && <p className="mt-1 text-sm leading-6 text-muted-foreground">Phản hồi: {order.cancelRejectionReason}</p>}
+                    </section>
+                )}
+
+                {order.status === "Cancelled" && (
+                    <section className="mb-5 border border-destructive/25 bg-destructive/10 p-4" aria-label="Đơn hàng đã hủy">
+                        <p className="text-sm font-semibold text-text-strong">Đơn hàng này đã được hủy.</p>
+                    </section>
                 )}
 
                 <OrderStatusTimeline order={order} />
 
                 {order.loyaltyPointsAwarded && (order.loyaltyPoints ?? 0) > 0 && (
-                    <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-900 p-4 mb-5">
-                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                            Bạn đã nhận {order.loyaltyPoints} điểm từ đơn hàng này.
-                        </p>
-                    </div>
+                    <section className="mb-5 flex items-start gap-3 border border-success/25 bg-success/10 p-4" aria-label="Điểm thành viên">
+                        <Award aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-success" />
+                        <div>
+                            <h2 className="text-sm font-semibold text-text-strong">Điểm thành viên</h2>
+                            <p className="mt-1 text-sm leading-6 text-muted-foreground">Bạn đã nhận {order.loyaltyPoints} điểm từ đơn hàng này.</p>
+                        </div>
+                    </section>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    {/* ── Order Items ── */}
-                    <div className="lg:col-span-2 bg-white dark:bg-card rounded-2xl border border-border p-5">
-                        <h2 className="font-bold mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>📦 Sản phẩm</h2>
+                    <section className="border border-border bg-surface p-4 sm:p-5 lg:col-span-2" aria-labelledby="order-items-title">
+                        <div className="mb-4 flex items-center gap-2">
+                            <Package aria-hidden="true" className="size-5 text-primary" />
+                            <h2 id="order-items-title" className="font-semibold text-text-strong">Sản phẩm</h2>
+                        </div>
                         <div className="flex flex-col gap-3">
-                            {/* Defensive: optional chain + fallback to empty array */}
-                            {(order.orderItems ?? []).map((item, index) => (
-                                <div key={item.product ?? index} className="flex items-center gap-3">
+                            {(order.orderItems ?? []).length === 0 ? (
+                                <p className="py-4 text-sm text-muted-foreground">Chưa có thông tin sản phẩm trong đơn hàng này.</p>
+                            ) : (order.orderItems ?? []).map((item, index) => (
+                                <div key={item.product ?? index} className="flex items-center gap-3 border-b border-divider pb-3 last:border-0 last:pb-0">
                                     {item.image && (
                                         <img
                                             src={item.image}
                                             alt={item.name}
-                                            className="w-14 h-14 rounded-xl object-cover border border-border"
+                                            className="size-14 shrink-0 rounded-md border border-border object-cover"
                                         />
                                     )}
+                                    {!item.image && <span aria-hidden="true" className="flex size-14 shrink-0 items-center justify-center rounded-md bg-surface-subtle text-muted-foreground"><Package className="size-5" /></span>}
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-foreground line-clamp-1">
+                                        <p className="text-sm font-semibold text-text-strong line-clamp-2">
                                             {item.name ?? "Sản phẩm"}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">× {item.qty}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">Số lượng: {item.qty}</p>
                                     </div>
-                                    <p className="font-bold text-[var(--pet-coral)] text-sm shrink-0">
+                                    <p className="font-semibold text-text-strong text-sm shrink-0">
                                         {formatCurrency((item.price ?? 0) * (item.qty ?? 1))}
                                     </p>
                                 </div>
                             ))}
                         </div>
 
-                        {/* Totals */}
-                        <div className="border-t border-border mt-4 pt-4 flex flex-col gap-1 text-sm">
+                        <div className="border-t border-divider mt-5 pt-4 flex flex-col gap-2 text-sm">
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>Tạm tính</span>
+                                <span>{formatCurrency(order.itemsPrice ?? 0)}</span>
+                            </div>
                             <div className="flex justify-between text-muted-foreground">
                                 <span>Phí ship</span>
                                 <span>{formatCurrency(order.shippingPrice ?? 0)}</span>
                             </div>
                             {(order.discountAmount ?? 0) > 0 && (
-                                <div className="flex justify-between text-emerald-600">
+                                <div className="flex justify-between text-success">
                                     <span>Giảm giá</span>
                                     <span>−{formatCurrency(order.discountAmount)}</span>
                                 </div>
                             )}
-                            <div className="flex justify-between font-bold text-base border-t border-border pt-2">
+                            <div className="flex justify-between font-semibold text-base border-t border-divider pt-3 text-text-strong">
                                 <span>Tổng cộng</span>
-                                <span className="text-[var(--pet-coral)]">{formatCurrency(order.totalPrice ?? 0)}</span>
+                                <span>{formatCurrency(order.totalPrice ?? 0)}</span>
                             </div>
                         </div>
-                    </div>
+                    </section>
 
-                    {/* ── Meta panel ── */}
                     <div className="flex flex-col gap-4">
-                        {/* Shipping address */}
-                        <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
-                            <h2 className="font-bold mb-3" style={{ fontFamily: "'Nunito', sans-serif" }}>Địa chỉ giao hàng</h2>
+                        <section className="border border-border bg-surface p-4 sm:p-5" aria-labelledby="shipping-title">
+                            <div className="mb-3 flex items-center gap-2"><MapPin aria-hidden="true" className="size-5 text-primary" /><h2 id="shipping-title" className="font-semibold text-text-strong">Giao hàng</h2></div>
                             {order.shippingAddress?.fullName && (
-                                <p className="text-sm text-foreground font-semibold">{order.shippingAddress.fullName}</p>
+                                <p className="text-sm font-semibold text-text-strong">{order.shippingAddress.fullName}</p>
                             )}
-                            <p className="text-sm text-muted-foreground">{order.shippingAddress?.phone}</p>
-                            <p className="text-sm text-muted-foreground">{getShippingAddressText(order)}</p>
-                        </div>
+                            {order.shippingAddress?.phone && <p className="mt-1 text-sm text-muted-foreground">{order.shippingAddress.phone}</p>}
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">{getShippingAddressText(order) || "Chưa có thông tin địa chỉ giao hàng."}</p>
+                        </section>
 
-                        {/* Payment info */}
-                        <div className="bg-white dark:bg-card rounded-2xl border border-border p-5">
-                            <h2 className="font-bold mb-3" style={{ fontFamily: "'Nunito', sans-serif" }}>Thanh toán</h2>
-                            <p className="text-sm text-muted-foreground">
-                                Phương thức:{" "}
-                                <span className="text-foreground font-semibold">
-                                    {order.paymentMethod?.toUpperCase()}
-                                </span>
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                                Trạng thái:{" "}
-                                <span className={`font-semibold ${order.isPaid ? "text-emerald-600" : "text-amber-500"}`}>
-                                    {order.isPaid ? "Đã thanh toán" : "Chưa thanh toán"}
-                                </span>
-                            </p>
+                        <section className="border border-border bg-surface p-4 sm:p-5" aria-labelledby="payment-title">
+                            <div className="mb-3 flex items-center gap-2"><CreditCard aria-hidden="true" className="size-5 text-primary" /><h2 id="payment-title" className="font-semibold text-text-strong">Thanh toán</h2></div>
+                            <p className="text-sm text-muted-foreground">Phương thức</p>
+                            <p className="mt-1 text-sm font-medium text-text-strong">{getPaymentMethodLabel(order.paymentMethod)}</p>
+                            <div className="mt-3"><PaymentStatusBadge isPaid={order.isPaid} /></div>
                             {order.paidAt && (
-                                <p className="text-sm text-muted-foreground">
-                                    Ngày thanh toán:{" "}
-                                    <span className="text-foreground font-semibold">{formatDate(order.paidAt)}</span>
-                                </p>
+                                <p className="mt-3 text-xs text-muted-foreground">Thanh toán ngày {formatDate(order.paidAt)}</p>
                             )}
-                            <p className="text-sm text-muted-foreground">
-                                Ngày đặt:{" "}
-                                <span className="text-foreground font-semibold">{formatDate(order.createdAt)}</span>
-                            </p>
-                        </div>
+                        </section>
 
                         {canRequestCancel && (
-                            <button
-                                type="button"
-                                onClick={() => setShowCancelDialog(true)}
-                                className="w-full px-4 py-3 rounded-2xl bg-red-50 text-red-600 font-bold text-sm hover:bg-red-100 transition-all"
-                            >
+                            <Button type="button" variant="destructive" className="w-full" onClick={() => setShowCancelDialog(true)}>
                                 Yêu cầu hủy đơn
-                            </button>
+                            </Button>
                         )}
                     </div>
                 </div>
-            </main>
+            </section>
 
-            {showCancelDialog && (
-                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
-                    <div className="w-full max-w-md bg-white dark:bg-card rounded-2xl border border-border p-5 shadow-xl">
-                        <h2 className="font-bold text-lg mb-2" style={{ fontFamily: "'Nunito', sans-serif" }}>Yêu cầu hủy đơn</h2>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            Bạn chắc chắn muốn gửi yêu cầu hủy đơn hàng này? Quản trị viên sẽ kiểm tra trước khi hủy.
-                        </p>
-                        <textarea
+            <Dialog
+                open={showCancelDialog}
+                onOpenChange={(open) => {
+                    if (!requestingCancel) setShowCancelDialog(open);
+                }}
+                title="Yêu cầu hủy đơn"
+                description="Đây là yêu cầu cần quản trị viên xem xét, không phải thao tác hủy ngay lập tức."
+                footer={
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setShowCancelDialog(false)} disabled={requestingCancel}>
+                            Đóng
+                        </Button>
+                        <Button type="button" variant="destructive" onClick={handleCancelRequest} loading={requestingCancel}>
+                            Gửi yêu cầu
+                        </Button>
+                    </DialogFooter>
+                }
+            >
+                <FormField
+                    label="Lý do hủy đơn"
+                    description="Không bắt buộc. Thông tin này sẽ được gửi kèm yêu cầu để quản trị viên xem xét."
+                >
+                    {({ id, ...fieldProps }) => (
+                        <Textarea
+                            {...fieldProps}
+                            data-autofocus
+                            id={id}
                             value={cancelReason}
                             onChange={(e) => setCancelReason(e.target.value)}
                             maxLength={500}
                             rows={3}
-                            placeholder="Lý do hủy đơn (không bắt buộc)"
-                            className="w-full px-4 py-3 rounded-2xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all resize-none placeholder:text-muted-foreground"
+                            placeholder="Ví dụ: Tôi muốn thay đổi thông tin đơn hàng"
                         />
-                        <div className="flex justify-end gap-3 mt-4">
-                            <button
-                                type="button"
-                                onClick={() => setShowCancelDialog(false)}
-                                disabled={requestingCancel}
-                                className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-all disabled:opacity-50"
-                            >
-                                Đóng
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCancelRequest}
-                                disabled={requestingCancel}
-                                className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-all disabled:opacity-50"
-                            >
-                                {requestingCancel ? "Đang gửi..." : "Gửi yêu cầu"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    )}
+                </FormField>
+            </Dialog>
         </div>
     );
 };

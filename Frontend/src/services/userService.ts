@@ -20,6 +20,13 @@ export interface AdminUserPayload {
     password?: string;
 }
 
+export interface AdminUserListResult {
+    users: User[];
+    total: number;
+    page: number;
+    limit: number;
+}
+
 export const userService = {
     getProfile: async (): Promise<User> => {
         const res = await api.get<User>("/users/profile");
@@ -44,10 +51,10 @@ export const userService = {
         await api.put("/users/me/password", { oldPassword, newPassword });
     },
 
-    getAllUsers: async (page = 1, limit = 20, search = ""): Promise<{ users: User[]; total: number }> => {
-        const res = await api.get<ApiResponse<{ users: User[]; total: number }>>(
-            `/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`
-        );
+    getAllUsers: async (page = 1, limit = 20, search = ""): Promise<AdminUserListResult> => {
+        const res = await api.get<ApiResponse<AdminUserListResult>>("/users", {
+            params: { page, limit, ...(search ? { search } : {}) },
+        });
         return res.data.data;
     },
 
@@ -71,8 +78,4 @@ export const userService = {
         return res.data.data;
     },
 
-    deleteUser: async (userId: string): Promise<User> => {
-        const res = await api.delete<ApiResponse<User>>(`/users/${userId}`);
-        return res.data.data;
-    },
 };

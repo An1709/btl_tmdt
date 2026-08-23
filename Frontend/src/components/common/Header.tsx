@@ -1,251 +1,382 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { Link, NavLink } from "react-router";
+import {
+    ChevronDown,
+    LayoutDashboard,
+    LogIn,
+    LogOut,
+    Menu,
+    Moon,
+    Package,
+    PawPrint,
+    Search,
+    ShoppingCart,
+    Sun,
+    UserRound,
+    X,
+} from "lucide-react";
+
 import { useCartStore } from "@/stores/useCartStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 import UserAvatar from "@/components/common/UserAvatar";
 import ProductSearchBox from "@/components/common/ProductSearchBox";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+
+const primaryNavigation = [
+    { label: "Trang chủ", to: "/" },
+    { label: "Cửa hàng", to: "/shop" },
+    { label: "Blog", to: "/blog" },
+    { label: "Về chúng tôi", to: "/about" },
+];
+
+type NavigationLinkProps = {
+    label: string;
+    to: string;
+    onNavigate?: () => void;
+    mobile?: boolean;
+};
+
+const NavigationLink = ({ label, to, onNavigate, mobile = false }: NavigationLinkProps) => (
+    <NavLink
+        to={to}
+        end={to === "/"}
+        onClick={onNavigate}
+        className={({ isActive }) => mobile
+            ? `flex min-h-11 items-center justify-between rounded-md px-3 text-sm font-medium transition-colors duration-base ease-standard ${
+                isActive
+                    ? "bg-primary-subtle font-semibold text-primary"
+                    : "text-muted-foreground hover:bg-surface-subtle hover:text-text-strong"
+            }`
+            : `inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-medium transition-colors duration-base ease-standard ${
+                isActive
+                    ? "border-primary font-semibold text-text-strong"
+                    : "border-transparent text-muted-foreground hover:border-border-strong hover:text-text-strong"
+            }`
+        }
+    >
+        {({ isActive }) => (
+            <>
+                <span>{label}</span>
+                {mobile && isActive && <span className="text-xs font-semibold" aria-hidden="true">Đang xem</span>}
+            </>
+        )}
+    </NavLink>
+);
 
 const Header = () => {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
-    const cartCount = useCartStore((s) => s.totalCount)();
+    const [accountOpen, setAccountOpen] = useState(false);
+    const accountMenuRef = useRef<HTMLDivElement>(null);
+    const accountTriggerRef = useRef<HTMLButtonElement>(null);
+    const focusFirstAccountItemRef = useRef(false);
+    const accountMenuId = useId();
+    const cartCount = useCartStore((state) => state.totalCount)();
     const { isDark, toggleDark } = useUIStore();
     const { user, signOut } = useAuthStore();
-
-    const navLinks = [
-        { label: "Trang Chủ", to: "/" },
-        { label: "Cửa Hàng", to: "/shop" },
-        { label: "Blog", to: "/blog" },
-        { label: "Về Chúng Tôi", to: "/about" },
-    ];
-
     const isAdmin = user?.role === "admin" || user?.role === "staff";
 
+    useEffect(() => {
+        if (!accountOpen) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target as Node;
+            if (!accountMenuRef.current?.contains(target) && !accountTriggerRef.current?.contains(target)) {
+                setAccountOpen(false);
+            }
+        };
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setAccountOpen(false);
+                accountTriggerRef.current?.focus();
+            }
+        };
+
+        document.addEventListener("pointerdown", handlePointerDown);
+        document.addEventListener("keydown", handleKeyDown);
+
+        if (focusFirstAccountItemRef.current) {
+            const frameId = window.requestAnimationFrame(() => {
+                accountMenuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+                focusFirstAccountItemRef.current = false;
+            });
+            return () => {
+                window.cancelAnimationFrame(frameId);
+                document.removeEventListener("pointerdown", handlePointerDown);
+                document.removeEventListener("keydown", handleKeyDown);
+            };
+        }
+
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [accountOpen]);
+
+    const openAccountMenu = (focusFirstItem = false) => {
+        focusFirstAccountItemRef.current = focusFirstItem;
+        setAccountOpen(true);
+    };
+
+    const handleAccountTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            openAccountMenu(true);
+        }
+    };
+
+    const handleAccountMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (!accountMenuRef.current || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+
+        event.preventDefault();
+        const items = Array.from(accountMenuRef.current.querySelectorAll<HTMLElement>("[role='menuitem']"));
+        const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const nextIndex = currentIndex === -1
+            ? 0
+            : (currentIndex + delta + items.length) % items.length;
+        items[nextIndex]?.focus();
+    };
+
+    const handleSignOut = () => {
+        setAccountOpen(false);
+        setMobileOpen(false);
+        void signOut();
+    };
+
+    const closeMobileNavigation = () => setMobileOpen(false);
+    const cartLabel = cartCount > 0 ? `Giỏ hàng, ${cartCount} sản phẩm` : "Giỏ hàng trống";
+
+    const accountNavigation = (mobile = false) => (
+        <>
+            <Link
+                to="/profile"
+                onClick={mobile ? closeMobileNavigation : () => setAccountOpen(false)}
+                role={mobile ? undefined : "menuitem"}
+                className={mobile
+                    ? "flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-surface-subtle hover:text-text-strong"
+                    : "flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-primary-subtle hover:text-primary focus:bg-primary-subtle focus:text-primary"
+                }
+            >
+                <UserRound className="size-4" aria-hidden="true" />
+                Tài khoản
+            </Link>
+            <Link
+                to="/orders"
+                onClick={mobile ? closeMobileNavigation : () => setAccountOpen(false)}
+                role={mobile ? undefined : "menuitem"}
+                className={mobile
+                    ? "flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-surface-subtle hover:text-text-strong"
+                    : "flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-primary-subtle hover:text-primary focus:bg-primary-subtle focus:text-primary"
+                }
+            >
+                <Package className="size-4" aria-hidden="true" />
+                Đơn hàng
+            </Link>
+            {isAdmin && (
+                <Link
+                    to="/admin"
+                    onClick={mobile ? closeMobileNavigation : () => setAccountOpen(false)}
+                    role={mobile ? undefined : "menuitem"}
+                    className={mobile
+                        ? "flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold text-info transition-colors duration-base hover:bg-info-subtle hover:text-info-subtle-foreground"
+                        : "flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold text-info transition-colors duration-base hover:bg-info-subtle hover:text-info-subtle-foreground focus:bg-info-subtle"
+                    }
+                >
+                    <LayoutDashboard className="size-4" aria-hidden="true" />
+                    Trang quản trị
+                </Link>
+            )}
+        </>
+    );
+
     return (
-        <header className="sticky top-0 z-50 w-full">
-            {/* Glass backdrop */}
-            <div className="bg-white/90 dark:bg-card/95 backdrop-blur-xl border-b border-border/50 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16 md:h-18">
+        <header className="sticky top-0 z-sticky w-full border-b border-divider bg-surface/95 shadow-elevation-1">
+            <div className="mx-auto max-w-[var(--content-max)] px-page">
+                <div className="flex h-16 items-center gap-3 lg:h-[4.5rem]">
+                    <Link to="/" className="flex min-h-11 shrink-0 items-center gap-2 rounded-md text-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                        <span className="flex size-9 items-center justify-center rounded-md bg-primary-subtle" aria-hidden="true">
+                            <PawPrint className="size-5" />
+                        </span>
+                        <span className="font-heading text-xl font-extrabold tracking-tight sm:text-2xl">PetMart</span>
+                    </Link>
 
-                        {/* ===== LOGO ===== */}
-                        <Link to="/" className="flex items-center gap-2 shrink-0 group">
-                            <span className="text-3xl group-hover:animate-bounce transition-all select-none">🐾</span>
-                            <span
-                                className="text-xl md:text-2xl font-black gradient-text select-none"
-                                style={{ fontFamily: "'Nunito', sans-serif" }}
-                            >
-                                PetMart
-                            </span>
-                        </Link>
+                    <nav aria-label="Điều hướng chính" className="ml-4 hidden h-full items-center gap-1 lg:flex">
+                        {primaryNavigation.map((link) => <NavigationLink key={link.to} {...link} />)}
+                    </nav>
 
-                        {/* ===== DESKTOP NAV ===== */}
-                        <nav className="hidden md:flex items-center gap-1">
-                            {navLinks.map((link) => (
-                                <Link
-                                    key={link.to}
-                                    to={link.to}
-                                    className="px-4 py-2 rounded-xl text-sm font-semibold text-muted-foreground
-                             hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30
-                             transition-all duration-200"
-                                >
-                                    {link.label}
-                                </Link>
-                            ))}
-                        </nav>
+                    <div className="ml-auto flex items-center gap-1 sm:gap-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSearchOpen((open) => !open)}
+                            aria-label={searchOpen ? "Đóng tìm kiếm" : "Mở tìm kiếm"}
+                            aria-expanded={searchOpen}
+                            aria-controls="header-search-region"
+                        >
+                            {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" />}
+                        </Button>
 
-                        {/* ===== RIGHT ACTIONS ===== */}
-                        <div className="flex items-center gap-1 md:gap-2">
-
-                            {/* Search button */}
-                            <button
-                                id="header-search-btn"
-                                onClick={() => setSearchOpen((p) => !p)}
-                                className="p-2.5 rounded-xl text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
-                                aria-label="Tìm kiếm"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                            </button>
-
-                            {/* Cart button */}
-                            <Link
-                                to="/cart"
-                                id="header-cart-btn"
-                                className="relative p-2.5 rounded-xl text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
-                                aria-label="Giỏ hàng"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
+                        <Button asChild variant="ghost" size="icon" className="relative hidden min-[360px]:inline-flex" aria-label={cartLabel}>
+                            <Link to="/cart">
+                                <ShoppingCart aria-hidden="true" />
                                 {cartCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 flex items-center justify-center
-                                   bg-[var(--pet-coral)] text-white text-xs font-bold rounded-full px-1
-                                   animate-pulse-soft">
+                                    <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-none text-primary-foreground">
                                         {cartCount > 99 ? "99+" : cartCount}
                                     </span>
                                 )}
                             </Link>
+                        </Button>
 
-                            {/* Dark mode toggle */}
-                            <button
-                                id="header-darkmode-btn"
-                                onClick={toggleDark}
-                                className="p-2.5 rounded-xl text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
-                                aria-label={isDark ? "Chế độ sáng" : "Chế độ tối"}
-                            >
-                                {isDark ? (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                                    </svg>
-                                ) : (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                                    </svg>
-                                )}
-                            </button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="hidden min-[360px]:inline-flex"
+                            onClick={toggleDark}
+                            aria-label={isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+                        >
+                            {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+                        </Button>
 
-                            {/* User avatar / Login */}
-                            {user ? (
-                                <div className="relative group hidden md:block">
-                                    <button
-                                        id="header-user-btn"
-                                        className="flex items-center gap-2 pl-1 pr-3 py-1.5 rounded-xl
-                               hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
+                        {user ? (
+                            <div className="relative hidden lg:block">
+                                <Button
+                                    ref={accountTriggerRef}
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-11 max-w-48 justify-start px-2"
+                                    onClick={() => accountOpen ? setAccountOpen(false) : openAccountMenu()}
+                                    onKeyDown={handleAccountTriggerKeyDown}
+                                    aria-haspopup="menu"
+                                    aria-expanded={accountOpen}
+                                    aria-controls={accountMenuId}
+                                >
+                                    <UserAvatar user={user} className="size-7" fallbackClassName="text-xs" />
+                                    <span className="truncate">{user.displayName || user.username}</span>
+                                    <ChevronDown className={`size-4 text-muted-foreground transition-transform duration-base ${accountOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                                </Button>
+                                {accountOpen && (
+                                    <div
+                                        ref={accountMenuRef}
+                                        id={accountMenuId}
+                                        role="menu"
+                                        aria-label="Tài khoản"
+                                        onKeyDown={handleAccountMenuKeyDown}
+                                        className="absolute right-0 top-[calc(100%+0.5rem)] z-dropdown w-56 rounded-lg border border-border bg-surface-elevated p-2 shadow-elevation-3"
                                     >
-                                        <UserAvatar user={user} className="w-8 h-8" fallbackClassName="text-sm" />
-                                        <span className="text-sm font-semibold text-foreground">{user.displayName || user.username}</span>
-                                        <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </button>
-                                    {/* Dropdown */}
-                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-card border border-border rounded-2xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                        <div className="p-2">
-                                            <Link to="/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-[var(--pet-coral)] transition-colors">
-                                                <span>👤</span> Tài khoản
-                                            </Link>
-                                            <Link to="/orders" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-[var(--pet-coral)] transition-colors">
-                                                <span>📦</span> Đơn hàng
-                                            </Link>
-                                            {isAdmin && (
-                                                <>
-                                                    <hr className="my-1 border-border" />
-                                                    <Link
-                                                        to="/admin"
-                                                        id="header-admin-btn"
-                                                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-violet-50 dark:hover:bg-violet-950/30 hover:text-violet-600 text-violet-500 font-semibold transition-colors"
-                                                    >
-                                                        <span>⚙️</span> Trang Quản Trị
-                                                    </Link>
-                                                </>
-                                            )}
-                                            <hr className="my-1 border-border" />
+                                        <div className="border-b border-divider px-3 py-2.5">
+                                            <p className="truncate text-sm font-semibold text-text-strong">{user.displayName || user.username}</p>
+                                            {user.email && <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>}
+                                        </div>
+                                        <div className="py-1">{accountNavigation()}</div>
+                                        <div className="border-t border-divider pt-1">
                                             <button
-                                                onClick={() => signOut()}
-                                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={handleSignOut}
+                                                className="flex min-h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-destructive transition-colors duration-base hover:bg-destructive-subtle focus:bg-destructive-subtle"
                                             >
-                                                <span>🚪</span> Đăng xuất
+                                                <LogOut className="size-4" aria-hidden="true" />
+                                                Đăng xuất
                                             </button>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <Link
-                                    to="/signin"
-                                    id="header-login-btn"
-                                    className="hidden md:flex btn-pet-primary text-sm py-2 px-4"
-                                >
-                                    Đăng nhập
-                                </Link>
-                            )}
-
-                            {/* Mobile hamburger */}
-                            <button
-                                id="header-hamburger-btn"
-                                onClick={() => setMobileOpen((p) => !p)}
-                                className="md:hidden p-2.5 rounded-xl text-muted-foreground hover:text-[var(--pet-coral)] hover:bg-red-50 transition-all"
-                                aria-label="Menu"
-                            >
-                                {mobileOpen ? (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                ) : (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                    </svg>
                                 )}
-                            </button>
-                        </div>
-                    </div>
+                            </div>
+                        ) : (
+                            <Button asChild className="hidden lg:inline-flex">
+                                <Link to="/signin"><LogIn aria-hidden="true" />Đăng nhập</Link>
+                            </Button>
+                        )}
 
-                    {/* ===== SEARCH BAR (expanded) ===== */}
-                    {searchOpen && (
-                        <div className="pb-3 animate-fade-in-up">
-                            <ProductSearchBox
-                                inputId="header-search-input"
-                                autoFocus
-                                wrapperClassName="w-full"
-                                inputClassName="w-full px-4 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/40 focus:border-[var(--pet-coral)] transition-all placeholder:text-muted-foreground"
-                                onSearchComplete={() => setSearchOpen(false)}
-                            />
-                        </div>
-                    )}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="lg:hidden"
+                            onClick={() => setMobileOpen(true)}
+                            aria-label="Mở menu điều hướng"
+                            aria-expanded={mobileOpen}
+                        >
+                            <Menu aria-hidden="true" />
+                        </Button>
+                    </div>
                 </div>
 
-                {/* ===== MOBILE NAV ===== */}
-                {mobileOpen && (
-                    <div className="md:hidden border-t border-border bg-white/98 dark:bg-card/98 animate-fade-in-up">
-                        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1">
-                            {navLinks.map((link) => (
-                                <Link
-                                    key={link.to}
-                                    to={link.to}
-                                    onClick={() => setMobileOpen(false)}
-                                    className="px-4 py-3 rounded-xl font-semibold text-muted-foreground
-                             hover:text-[var(--pet-coral)] hover:bg-red-50 transition-all"
-                                >
-                                    {link.label}
-                                </Link>
-                            ))}
-                            <hr className="my-1 border-border" />
-                            {user ? (
-                                <>
-                                    {isAdmin && (
-                                        <Link
-                                            to="/admin"
-                                            onClick={() => setMobileOpen(false)}
-                                            className="px-4 py-3 rounded-xl font-semibold text-violet-500 hover:bg-violet-50 text-left transition-all flex items-center gap-2"
-                                        >
-                                            ⚙️ Trang Quản Trị
-                                        </Link>
-                                    )}
-                                    <button
-                                        onClick={() => { signOut(); setMobileOpen(false); }}
-                                        className="px-4 py-3 rounded-xl font-semibold text-red-500 hover:bg-red-50 text-left transition-all"
-                                    >
-                                        🚪 Đăng xuất
-                                    </button>
-                                </>
-                            ) : (
-                                <Link
-                                    to="/signin"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="btn-pet-primary justify-center text-sm"
-                                >
-                                    Đăng nhập
-                                </Link>
-                            )}
-                        </div>
+                {searchOpen && (
+                    <div id="header-search-region" className="border-t border-divider py-3">
+                        <ProductSearchBox
+                            inputId="header-search-input"
+                            autoFocus
+                            wrapperClassName="w-full"
+                            formClassName="flex flex-col gap-2 sm:flex-row"
+                            inputClassName="h-11 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground shadow-elevation-1 transition-[color,background-color,border-color,box-shadow] duration-base ease-standard focus:outline-none focus:border-focus focus:ring-[3px] focus:ring-focus/45"
+                            buttonClassName="btn-pet-primary justify-center text-sm"
+                            onSearchComplete={() => setSearchOpen(false)}
+                        />
                     </div>
                 )}
             </div>
+
+            <Dialog
+                open={mobileOpen}
+                onOpenChange={setMobileOpen}
+                title="Điều hướng"
+                description="Khám phá PetMart, giỏ hàng và tài khoản của bạn."
+                size="sm"
+                className="ml-auto h-[100dvh] max-h-none w-full max-w-sm rounded-none sm:rounded-l-lg"
+            >
+                <nav aria-label="Điều hướng trên thiết bị nhỏ" className="flex flex-col gap-1">
+                    {primaryNavigation.map((link) => (
+                        <NavigationLink key={link.to} {...link} mobile onNavigate={closeMobileNavigation} />
+                    ))}
+                    <Link
+                        to="/cart"
+                        onClick={closeMobileNavigation}
+                        className="flex min-h-11 items-center justify-between rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-surface-subtle hover:text-text-strong"
+                    >
+                        <span className="flex items-center gap-3"><ShoppingCart className="size-4" aria-hidden="true" />Giỏ hàng</span>
+                        {cartCount > 0 && <span className="text-xs font-semibold text-primary">{cartCount}</span>}
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={toggleDark}
+                        className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-muted-foreground transition-colors duration-base hover:bg-surface-subtle hover:text-text-strong focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45"
+                    >
+                        {isDark ? <Sun className="size-4" aria-hidden="true" /> : <Moon className="size-4" aria-hidden="true" />}
+                        {isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+                    </button>
+                </nav>
+
+                <div className="my-5 border-t border-divider" />
+
+                {user ? (
+                    <div>
+                        <div className="mb-2 flex items-center gap-3 px-3 py-2">
+                            <UserAvatar user={user} className="size-9" fallbackClassName="text-sm" />
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-text-strong">{user.displayName || user.username}</p>
+                                {user.email && <p className="truncate text-xs text-muted-foreground">{user.email}</p>}
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1">{accountNavigation(true)}</div>
+                        <div className="mt-3 border-t border-divider pt-3">
+                            <Button type="button" variant="ghost" className="w-full justify-start text-destructive hover:bg-destructive-subtle hover:text-destructive" onClick={handleSignOut}>
+                                <LogOut aria-hidden="true" />Đăng xuất
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    <Button asChild className="w-full justify-center" onClick={closeMobileNavigation}>
+                        <Link to="/signin"><LogIn aria-hidden="true" />Đăng nhập</Link>
+                    </Button>
+                )}
+            </Dialog>
         </header>
     );
 };

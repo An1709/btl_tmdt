@@ -29,9 +29,17 @@ export interface ShippingAddress {
     fullAddress?: string;
 }
 
+export interface OrderUserSummary {
+    _id: string;
+    username?: string;
+    displayName?: string;
+    fullName?: string;
+    email?: string;
+}
+
 export interface Order {
     _id: string;
-    user: string;
+    user: string | OrderUserSummary;
     orderItems: OrderItem[];
     shippingAddress: ShippingAddress;
     paymentMethod: PaymentMethod;

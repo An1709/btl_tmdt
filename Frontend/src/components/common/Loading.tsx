@@ -2,6 +2,7 @@ interface LoadingProps {
     text?: string;
     fullPage?: boolean;
     size?: "sm" | "md" | "lg";
+    className?: string;
 }
 
 const sizeMap = {
@@ -10,29 +11,38 @@ const sizeMap = {
     lg: "w-14 h-14 border-4",
 };
 
-const Loading = ({ text = "Đang tải...", fullPage = false, size = "md" }: LoadingProps) => {
-    const spinner = (
-        <div className="flex flex-col items-center gap-3">
-            <div
-                className={`${sizeMap[size]} rounded-full border-[var(--pet-coral)] border-t-transparent animate-spin`}
-            />
-            {text && <p className="text-sm text-muted-foreground font-medium">{text}</p>}
-        </div>
-    );
+export const Spinner = ({ text = "Đang tải...", size = "md", className = "" }: Omit<LoadingProps, "fullPage">) => (
+    <div
+        className={`flex flex-col items-center gap-3 ${className}`}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+    >
+        <div
+            aria-hidden="true"
+            className={`${sizeMap[size]} rounded-full border-primary border-t-transparent animate-spin`}
+        />
+        {text && <p className="text-sm text-muted-foreground font-medium">{text}</p>}
+    </div>
+);
+
+export const SectionLoading = ({ text = "Đang tải...", size = "md", className = "" }: Omit<LoadingProps, "fullPage">) => (
+    <div className={`flex items-center justify-center py-12 ${className}`}>
+        <Spinner text={text} size={size} />
+    </div>
+);
+
+const Loading = ({ text = "Đang tải...", fullPage = false, size = "md", className = "" }: LoadingProps) => {
 
     if (fullPage) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                {spinner}
+            <div className={`fixed inset-0 z-overlay flex items-center justify-center bg-background/85 ${className}`}>
+                <Spinner text={text} size={size} />
             </div>
         );
     }
 
-    return (
-        <div className="flex items-center justify-center py-12">
-            {spinner}
-        </div>
-    );
+    return <SectionLoading text={text} size={size} className={className} />;
 };
 
 /** Skeleton shimmer block */
@@ -41,13 +51,7 @@ export const SkeletonBlock = ({
 }: {
     className?: string;
 }) => (
-    <div
-        className={`bg-gradient-to-r from-muted via-muted/60 to-muted animate-pulse rounded-xl ${className}`}
-        style={{
-            backgroundSize: "200% 100%",
-            animation: "shimmer 1.5s infinite",
-        }}
-    />
+    <div className={`rounded-lg bg-muted animate-pulse ${className}`} />
 );
 
 /** Skeleton card for loading product grids */

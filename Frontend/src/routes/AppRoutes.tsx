@@ -2,6 +2,7 @@ import { Routes, Route, Link } from "react-router";
 
 import { Suspense, lazy } from "react";
 import Loading from "@/components/common/Loading";
+import { Button } from "@/components/ui/button";
 import MainLayout from "@/layouts/MainLayout";
 import AdminLayout from "@/layouts/AdminLayout";
 import AuthLayout from "@/layouts/AuthLayout";
@@ -98,11 +99,14 @@ const AppRoutes = () => (
 
         {/* ── 404 fallback ── */}
         <Route path="*" element={
-            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-                <div className="text-7xl">😿</div>
-                <h1 className="text-3xl font-black text-foreground" style={{ fontFamily: "'Nunito', sans-serif" }}>404 – Trang không tồn tại</h1>
-                <Link to="/" className="btn-pet-primary">🏠 Về trang chủ</Link>
-            </div>
+            <main className="page-container flex min-h-screen flex-col items-center justify-center gap-4 py-12 text-center">
+                <p className="text-sm font-semibold text-primary">Lỗi 404</p>
+                <h1 className="max-w-xl text-3xl font-bold tracking-tight text-text-strong sm:text-4xl">Trang bạn tìm không tồn tại</h1>
+                <p className="max-w-md text-sm leading-6 text-muted-foreground">Đường dẫn có thể đã thay đổi hoặc không còn khả dụng. Bạn có thể trở về trang chủ để tiếp tục khám phá PetMart.</p>
+                <Button asChild className="mt-2">
+                    <Link to="/">Về trang chủ</Link>
+                </Button>
+            </main>
         } />
     </Routes>
 );

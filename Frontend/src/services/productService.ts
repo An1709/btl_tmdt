@@ -138,7 +138,16 @@ export const productService = {
         // we skip the filter entirely to avoid a Mongoose CastError → 500.
         if (filters.category) {
             const resolvedId = await categoryService.resolveId(filters.category);
-            if (resolvedId) params.append("category", resolvedId);
+            if (!resolvedId) {
+                return {
+                    data: [],
+                    total: 0,
+                    page: filters.page ?? 1,
+                    limit: filters.limit ?? 10,
+                    totalPages: 0,
+                };
+            }
+            params.append("category", resolvedId);
         }
 
         if (filters.minPrice) params.append("price[gte]", String(filters.minPrice));

@@ -34,13 +34,21 @@ export const isNotEmpty = (value: string): boolean => {
 /**
  * Helper để validate form đăng ký
  */
-export const validateRegisterForm = (values: any) => {
+export interface RegisterFormValues {
+  username?: string;
+  email?: string;
+  password?: string;
+  phone?: string;
+  confirmPassword?: string;
+}
+
+export const validateRegisterForm = (values: RegisterFormValues) => {
   const errors: Record<string, string> = {};
 
   if (!values.username) errors.username = "Username không được để trống";
-  if (!isValidEmail(values.email)) errors.email = "Email không hợp lệ";
-  if (!isValidPassword(values.password)) errors.password = "Mật khẩu phải từ 6 ký tự";
-  if (!isValidPhone(values.phone)) errors.phone = "Số điện thoại không hợp lệ";
+  if (!isValidEmail(values.email ?? "")) errors.email = "Email không hợp lệ";
+  if (!isValidPassword(values.password ?? "")) errors.password = "Mật khẩu phải từ 6 ký tự";
+  if (!isValidPhone(values.phone ?? "")) errors.phone = "Số điện thoại không hợp lệ";
   if (values.password !== values.confirmPassword) errors.confirmPassword = "Mật khẩu nhập lại không khớp";
 
   return errors;

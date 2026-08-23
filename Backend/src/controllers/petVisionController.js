@@ -24,7 +24,7 @@ const getPredictionErrorMessage = (error) => {
         return {
             status: 503,
             code,
-            message: 'MÃ´ hÃ¬nh nháº­n diá»‡n chÆ°a sáºµn sÃ ng. Vui lÃ²ng kiá»ƒm tra Python dependencies.',
+            message: 'Mô hình nhận diện chưa sẵn sàng. Vui lòng kiểm tra các phụ thuộc Python.',
         };
     }
 
@@ -38,7 +38,7 @@ const getPredictionErrorMessage = (error) => {
         return {
             status: 503,
             code,
-            message: 'KhÃ´ng thá»ƒ nháº­n diá»‡n áº£nh. Vui lÃ²ng kiá»ƒm tra logs Pet Vision.',
+            message: 'Không thể nhận diện ảnh. Vui lòng kiểm tra nhật ký Pet Vision.',
             details: error?.details,
         };
     }

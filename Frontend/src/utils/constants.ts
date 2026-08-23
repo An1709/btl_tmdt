@@ -55,8 +55,8 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
 };
 
 export const WARRANTY_STATUS_LABELS: Record<string, string> = {
-    pending: "Chờ xử lý",
-    processing: "Đang xử lý",
-    resolved: "Đã giải quyết",
-    rejected: "Từ chối",
+    Pending: "Chờ xử lý",
+    Approved: "Đã tiếp nhận",
+    Rejected: "Từ chối",
+    Completed: "Đã hoàn tất",
 };

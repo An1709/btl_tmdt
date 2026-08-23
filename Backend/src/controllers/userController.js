@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import User from '../models/User.js';
+import Session from '../models/Session.js';
 import { uploadImage } from '../utils/cloudinaryUpload.js';
 
 const USER_ROLES = ['customer', 'admin', 'staff'];
@@ -114,6 +115,48 @@ export const updateUserAvatar = async (req, res) => {
         }
 
         return res.status(500).json({ message: 'Không thể cập nhật ảnh đại diện. Vui lòng thử lại.' });
+    }
+};
+
+export const changeOwnPassword = async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+
+        if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
+            return res.status(400).json({ message: 'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+        }
+
+        if (oldPassword === newPassword) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải khác mật khẩu hiện tại.' });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
+        }
+
+        const passwordMatches = await bcrypt.compare(oldPassword, user.hashedPassword);
+        if (!passwordMatches) {
+            return res.status(400).json({ message: 'Mật khẩu hiện tại không đúng.' });
+        }
+
+        user.hashedPassword = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+        const currentRefreshToken = req.cookies?.refreshToken;
+        const sessionFilter = currentRefreshToken
+            ? { userId: user._id, refreshToken: { $ne: currentRefreshToken } }
+            : { userId: user._id };
+        await Session.deleteMany(sessionFilter);
+
+        return res.status(200).json({ message: 'Đổi mật khẩu thành công.' });
+    } catch (error) {
+        console.error('Error in changeOwnPassword:', error);
+        return res.status(500).json({ message: 'Không thể đổi mật khẩu. Vui lòng thử lại.' });
     }
 };
 

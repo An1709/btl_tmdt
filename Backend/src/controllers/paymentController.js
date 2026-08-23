@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import vnpayConfig from '../config/vnpayConfig.js';
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
+import mongoose from 'mongoose';
+import { releaseOrderReservations } from '../services/orderReservationService.js';
 
 const VNPAY_CONFIG_ERROR = 'Thiếu cấu hình VNPay. Vui lòng kiểm tra VNP_TMN_CODE, VNP_HASH_SECRET và VNP_RETURN_URL.';
 const VNPAY_EXPECTED_RETURN_PATH = '/api/payment/vnpay_return';
@@ -128,11 +130,18 @@ function verifySignature(queryParams, secretKey) {
 async function findOrderByTxnRef(txnRef) {
     if (!txnRef) return null;
 
+    const normalizedTxnRef = String(txnRef).trim();
+    if (mongoose.isValidObjectId(normalizedTxnRef)) {
+        const order = await Order.findById(normalizedTxnRef);
+        if (order) return order;
+    }
+
+    // Temporary compatibility fallback for payment URLs issued before full IDs were used.
     return Order.findOne({
         $expr: {
             $eq: [
                 { $toUpper: { $substr: [{ $toString: '$_id' }, 16, 8] } },
-                String(txnRef).toUpperCase(),
+                normalizedTxnRef.toUpperCase(),
             ],
         },
     });
@@ -145,27 +154,64 @@ function isAmountMatching(order, queryParams) {
     return Math.round(order.totalPrice * 100) === Math.round(vnpAmount);
 }
 
-async function markOrderPaidFromVNPay(order, queryParams) {
-    if (order.isPaid) return order;
+async function markOrderPaidFromVNPay(orderId, queryParams) {
+    let updatedOrder;
 
-    order.isPaid = true;
-    order.paidAt = new Date();
-    order.status = 'Processing';
-    order.paymentResult = {
-        id: queryParams['vnp_TransactionNo'],
-        status: queryParams['vnp_ResponseCode'],
-        update_time: queryParams['vnp_PayDate'],
-    };
-    appendPaymentStatusHistory(order, 'Processing', 'Thanh toán VNPay thành công, đơn hàng đang được xử lý');
+    await mongoose.connection.transaction(async (session) => {
+        const order = await Order.findById(orderId).session(session);
+        if (!order) throw new Error('Order not found');
+        if (order.isPaid) {
+            updatedOrder = order;
+            return;
+        }
+        if (order.status === 'Cancelled') {
+            const error = new Error('A cancelled order cannot be marked as paid');
+            error.code = 'ORDER_ALREADY_CANCELLED';
+            throw error;
+        }
 
-    const updatedOrder = await order.save();
+        order.isPaid = true;
+        order.paidAt = new Date();
+        order.status = 'Processing';
+        order.paymentResult = {
+            id: queryParams['vnp_TransactionNo'],
+            status: queryParams['vnp_ResponseCode'],
+            update_time: queryParams['vnp_PayDate'],
+        };
+        appendPaymentStatusHistory(order, 'Processing', 'Thanh toán VNPay thành công, đơn hàng đang được xử lý');
 
-    if (Array.isArray(updatedOrder.selectedCartProductIds) && updatedOrder.selectedCartProductIds.length) {
-        await Cart.updateOne(
-            { user: updatedOrder.user },
-            { $pull: { items: { product: { $in: updatedOrder.selectedCartProductIds } } } },
-        );
-    }
+        updatedOrder = await order.save({ session });
+
+        if (Array.isArray(updatedOrder.selectedCartProductIds) && updatedOrder.selectedCartProductIds.length) {
+            await Cart.updateOne(
+                { user: updatedOrder.user },
+                { $pull: { items: { product: { $in: updatedOrder.selectedCartProductIds } } } },
+                { session },
+            );
+        }
+    });
+
+    return updatedOrder;
+}
+
+async function cancelFailedVNPayOrder(orderId) {
+    let updatedOrder;
+
+    await mongoose.connection.transaction(async (session) => {
+        const order = await Order.findById(orderId).session(session);
+        if (!order) throw new Error('Order not found');
+        if (order.isPaid) {
+            updatedOrder = order;
+            return;
+        }
+
+        await releaseOrderReservations(order, session);
+        if (order.status !== 'Cancelled') {
+            order.status = 'Cancelled';
+            appendPaymentStatusHistory(order, 'Cancelled', 'Thanh toán VNPay không thành công, đơn hàng đã bị hủy');
+        }
+        updatedOrder = await order.save({ session });
+    });
 
     return updatedOrder;
 }
@@ -175,7 +221,7 @@ async function markOrderPaidFromVNPay(order, queryParams) {
 // @route   POST /api/payment/create_payment_url
 // @body    { amount: number, bankCode?: string, orderId?: string }
 // ---------------------------------------------------------------------------
-export const createPaymentUrl = (req, res) => {
+export const createPaymentUrl = async (req, res, next) => {
     // ── 1. Read & trim all env values (whitespace in .env silently breaks HMAC) ──
     const settings = getVNPaySettings();
 
@@ -185,18 +231,38 @@ export const createPaymentUrl = (req, res) => {
 
     const { tmnCode, secretKey, vnpUrl, returnUrl, ipnUrl } = settings;
 
+    const orderId = String(req.body.orderId || '').trim();
+    if (!mongoose.isValidObjectId(orderId)) {
+        return res.status(400).json({ message: 'Đơn hàng không hợp lệ.' });
+    }
+
+    let order;
+    try {
+        order = await Order.findOne({ _id: orderId, user: req.user._id });
+    } catch (error) {
+        return next(error);
+    }
+
+    if (!order) {
+        return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
+    }
+    if (String(order.paymentMethod || '').toLowerCase() !== 'vnpay') {
+        return res.status(400).json({ message: 'Đơn hàng không sử dụng VNPay.' });
+    }
+    if (order.isPaid || order.status === 'Cancelled') {
+        return res.status(409).json({ message: 'Đơn hàng không còn ở trạng thái chờ thanh toán.' });
+    }
+
     // ── 2. Vietnam time via explicit UTC+7 offset (NOT process.env.TZ — unreliable) ──
     const now        = moment().utcOffset('+07:00');
     const createDate = now.format('YYYYMMDDHHmmss');   // e.g. 20260424214500
     const expireDate = now.clone().add(15, 'minutes').format('YYYYMMDDHHmmss');
 
     // ── 3. TxnRef: unique per transaction ──
-    const txnRef = req.body.orderId
-        ? String(req.body.orderId).slice(-8).toUpperCase()
-        : now.format('HHmmss') + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const txnRef = String(order._id).toUpperCase();
 
     // ── 4. Amount: integer * 100, no floats ──
-    const rawAmount = parseFloat(req.body.amount) || 0;
+    const rawAmount = Number(order.totalPrice) || 0;
     const amount    = Math.round(rawAmount * 100);  // Math.round avoids 0.1+0.2 drift
 
     if (amount <= 0) {
@@ -290,7 +356,7 @@ export const vnpayReturn = async (req, res) => {
                 );
             }
 
-            await markOrderPaidFromVNPay(order, req.query);
+            await markOrderPaidFromVNPay(order._id, req.query);
 
             return res.redirect(
                 `${frontendUrl}/payment/result?status=success&orderId=${order._id}`
@@ -301,6 +367,18 @@ export const vnpayReturn = async (req, res) => {
                 `${frontendUrl}/payment/result?status=failed&orderId=${txnRef}&code=server_error`
             );
         }
+    }
+
+    try {
+        const order = await findOrderByTxnRef(txnRef);
+        if (order && isAmountMatching(order, req.query)) {
+            await cancelFailedVNPayOrder(order._id);
+            return res.redirect(
+                `${frontendUrl}/payment/result?status=failed&orderId=${order._id}&code=${responseCode || 'unknown'}`
+            );
+        }
+    } catch (err) {
+        console.error('[VNPay failed-return cleanup error]', err);
     }
 
     return res.redirect(
@@ -343,14 +421,12 @@ export const vnpayIpn = async (req, res) => {
         }
 
         if (responseCode === '00') {
-            await markOrderPaidFromVNPay(order, req.query);
+            await markOrderPaidFromVNPay(order._id, req.query);
             return res.status(200).json({ RspCode: '00', Message: 'Confirm Success' });
         }
 
         // Payment failed / user cancelled
-        order.status = 'Cancelled';
-        appendPaymentStatusHistory(order, 'Cancelled', 'Thanh toán VNPay không thành công, đơn hàng đã bị hủy');
-        await order.save();
+        await cancelFailedVNPayOrder(order._id);
         return res.status(200).json({ RspCode: '00', Message: 'Confirm Success' });
 
     } catch (err) {

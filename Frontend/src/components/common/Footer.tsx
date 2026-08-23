@@ -1,6 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Link } from "react-router";
+import { Mail, MapPin, PawPrint, Phone } from "lucide-react";
+
 import { newsletterService } from "@/services/newsletterService";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -8,67 +12,29 @@ const getNewsletterError = (error: unknown) =>
     (error as { response?: { data?: { message?: string } } }).response?.data?.message
     || "Không thể gửi ưu đãi. Vui lòng thử lại sau.";
 
+const shopLinks = [
+    { label: "Chó", to: "/shop?cat=dog" },
+    { label: "Mèo", to: "/shop?cat=cat" },
+    { label: "Thỏ", to: "/shop?cat=rabbit" },
+    { label: "Hamster", to: "/shop?cat=hamster" },
+    { label: "Phụ kiện", to: "/shop?cat=accessory" },
+];
+
+const supportLinks = [
+    { label: "Cẩm nang thú cưng", to: "/blog" },
+    { label: "Nhận diện giống thú cưng", to: "/pet-vision" },
+    { label: "Theo dõi đơn hàng", to: "/orders" },
+    { label: "Danh sách yêu thích", to: "/wishlist" },
+    { label: "Yêu cầu bảo hành", to: "/warranty" },
+];
+
 const Footer = () => {
     const year = new Date().getFullYear();
+    const statusId = useId();
     const [newsletterEmail, setNewsletterEmail] = useState("");
     const [newsletterMessage, setNewsletterMessage] = useState("");
     const [newsletterStatus, setNewsletterStatus] = useState<"success" | "error" | "">("");
     const [newsletterLoading, setNewsletterLoading] = useState(false);
-
-    const shopLinks = [
-        { label: "Chó", to: "/shop?cat=dog" },
-        { label: "Mèo", to: "/shop?cat=cat" },
-        { label: "Thỏ & Hamster", to: "/shop?cat=rabbit" },
-        { label: "Phụ kiện", to: "/shop?cat=accessory" },
-        { label: "Khuyến mãi", to: "/shop?sale=true" },
-    ];
-
-    const supportLinks = [
-        { label: "Hướng dẫn mua hàng", to: "/guide" },
-        { label: "Chính sách đổi trả", to: "/returns" },
-        { label: "Bảo hành thú cưng", to: "/warranty" },
-        { label: "Liên hệ", to: "/contact" },
-        { label: "FAQ", to: "/faq" },
-    ];
-
-    const socials = [
-        {
-            label: "Facebook",
-            href: "https://facebook.com",
-            icon: (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
-            ),
-        },
-        {
-            label: "Instagram",
-            href: "https://instagram.com",
-            icon: (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
-                </svg>
-            ),
-        },
-        {
-            label: "TikTok",
-            href: "https://tiktok.com",
-            icon: (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
-                </svg>
-            ),
-        },
-        {
-            label: "YouTube",
-            href: "https://youtube.com",
-            icon: (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.495 6.205a3.007 3.007 0 00-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 00.527 6.205a31.247 31.247 0 00-.522 5.805 31.247 31.247 0 00.522 5.783 3.007 3.007 0 002.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 002.088-2.088 31.247 31.247 0 00.5-5.783 31.247 31.247 0 00-.5-5.805zM9.609 15.601V8.408l6.264 3.602z" />
-                </svg>
-            ),
-        },
-    ];
 
     const validateNewsletterEmail = () => {
         const email = newsletterEmail.trim();
@@ -116,141 +82,94 @@ const Footer = () => {
     };
 
     return (
-        <footer className="bg-foreground dark:bg-card text-white/90 mt-16">
-            {/* Coral gradient top divider */}
-            <div className="h-1 bg-gradient-to-r from-[var(--pet-coral)] via-[var(--pet-warm)] to-[var(--pet-mint)]" />
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-
-                    {/* About */}
-                    <div className="flex flex-col gap-4">
-                        <div className="flex items-center gap-2">
-                            <span className="text-3xl">🐾</span>
-                            <span className="text-2xl font-black text-white" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                                PetMart
+        <footer className="mt-16 border-t border-divider bg-text-strong text-text-inverse">
+            <div className="mx-auto max-w-[var(--content-max)] px-page py-12 lg:py-14">
+                <div className="grid gap-10 md:grid-cols-2 xl:grid-cols-[1.35fr_0.8fr_1fr_1.25fr]">
+                    <section aria-labelledby="footer-brand-heading" className="max-w-sm">
+                        <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-md text-text-inverse focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-text-strong">
+                            <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground" aria-hidden="true">
+                                <PawPrint className="size-5" />
                             </span>
-                        </div>
-                        <p className="text-sm text-white/60 leading-relaxed">
-                            Mang người bạn bốn chân về nhà. Cửa hàng thú cưng trực tuyến uy tín nhất Việt Nam.
+                            <span id="footer-brand-heading" className="font-heading text-xl font-extrabold">PetMart</span>
+                        </Link>
+                        <p className="mt-4 text-sm leading-6 text-text-inverse/70">
+                            Mang người bạn bốn chân về nhà với những sản phẩm và dịch vụ được chọn lọc cho thú cưng.
                         </p>
-                        <div className="flex items-center gap-1.5 text-sm text-white/60">
-                            <span>📞</span> 1800-PETMART
-                        </div>
-                        <div className="flex items-center gap-1.5 text-sm text-white/60">
-                            <span>📧</span> hello@petmart.vn
-                        </div>
-                        <div className="flex items-center gap-1.5 text-sm text-white/60">
-                            <span>📍</span> TP. Hà Nội, Việt Nam
-                        </div>
-                    </div>
+                        <address className="mt-5 space-y-3 not-italic text-sm text-text-inverse/70">
+                            <a href="tel:1800-PETMART" className="flex min-h-11 items-center gap-2 rounded-sm hover:text-text-inverse focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-text-strong">
+                                <Phone className="size-4" aria-hidden="true" />1800-PETMART
+                            </a>
+                            <a href="mailto:hello@petmart.vn" className="flex min-h-11 items-center gap-2 rounded-sm hover:text-text-inverse focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-text-strong">
+                                <Mail className="size-4" aria-hidden="true" />hello@petmart.vn
+                            </a>
+                            <p className="flex items-center gap-2"><MapPin className="size-4" aria-hidden="true" />TP. Hà Nội, Việt Nam</p>
+                        </address>
+                    </section>
 
-                    {/* Shop */}
-                    <div className="flex flex-col gap-4">
-                        <h3 className="font-bold text-white text-sm uppercase tracking-wider">Cửa Hàng</h3>
-                        <ul className="flex flex-col gap-2">
+                    <section aria-labelledby="footer-shop-heading">
+                        <h2 id="footer-shop-heading" className="text-base font-semibold text-text-inverse">Khám phá cửa hàng</h2>
+                        <ul className="mt-4 space-y-2.5">
                             {shopLinks.map((link) => (
                                 <li key={link.to}>
-                                    <Link
-                                        to={link.to}
-                                        className="text-sm text-white/60 hover:text-[var(--pet-coral)] transition-colors duration-200"
-                                    >
+                                    <Link to={link.to} className="inline-flex min-h-11 items-center rounded-sm text-sm text-text-inverse/70 transition-colors duration-base hover:text-text-inverse focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-text-strong">
                                         {link.label}
                                     </Link>
                                 </li>
                             ))}
                         </ul>
-                    </div>
+                    </section>
 
-                    {/* Support */}
-                    <div className="flex flex-col gap-4">
-                        <h3 className="font-bold text-white text-sm uppercase tracking-wider">Hỗ Trợ</h3>
-                        <ul className="flex flex-col gap-2">
+                    <section aria-labelledby="footer-support-heading">
+                        <h2 id="footer-support-heading" className="text-base font-semibold text-text-inverse">Hỗ trợ</h2>
+                        <ul className="mt-4 space-y-2.5">
                             {supportLinks.map((link) => (
                                 <li key={link.to}>
-                                    <Link
-                                        to={link.to}
-                                        className="text-sm text-white/60 hover:text-[var(--pet-coral)] transition-colors duration-200"
-                                    >
+                                    <Link to={link.to} className="inline-flex min-h-11 items-center rounded-sm text-sm text-text-inverse/70 transition-colors duration-base hover:text-text-inverse focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-focus/45 focus-visible:ring-offset-2 focus-visible:ring-offset-text-strong">
                                         {link.label}
                                     </Link>
                                 </li>
                             ))}
                         </ul>
-                    </div>
+                    </section>
 
-                    {/* Social */}
-                    <div className="flex flex-col gap-4">
-                        <h3 className="font-bold text-white text-sm uppercase tracking-wider">Theo Dõi Chúng Tôi</h3>
-                        <div className="flex gap-3">
-                            {socials.map((s) => (
-                                <a
-                                    key={s.label}
-                                    href={s.href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label={s.label}
-                                    className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center
-                             hover:bg-[var(--pet-coral)] hover:-translate-y-1 transition-all duration-200"
-                                >
-                                    {s.icon}
-                                </a>
-                            ))}
-                        </div>
-                        {/* Newsletter mini */}
-                        <div className="mt-2">
-                            <p className="text-sm text-white/60 mb-2">Nhận ưu đãi dành cho người mới</p>
-                            <form className="flex gap-2" onSubmit={handleNewsletterSubmit}>
-                                <input
-                                    type="email"
-                                    placeholder="Email của bạn"
-                                    value={newsletterEmail}
-                                    onChange={(event) => {
-                                        setNewsletterEmail(event.target.value);
-                                        if (newsletterMessage) {
-                                            setNewsletterMessage("");
-                                            setNewsletterStatus("");
-                                        }
-                                    }}
-                                    disabled={newsletterLoading}
-                                    className="flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-sm text-white placeholder:text-white/40
-                             focus:outline-none focus:ring-2 focus:ring-[var(--pet-coral)]/50 min-w-0"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={newsletterLoading}
-                                    className="px-3 py-2 rounded-xl bg-[var(--pet-coral)] text-white text-sm font-semibold hover:opacity-90 transition-all shrink-0"
-                                >
-                                    {newsletterLoading ? "..." : "OK"}
-                                </button>
-                            </form>
-                            {newsletterMessage && (
-                                <p
-                                    className={`mt-2 text-xs leading-relaxed ${newsletterStatus === "success" ? "text-emerald-300" : "text-red-300"}`}
-                                    role="status"
-                                >
-                                    {newsletterMessage}
-                                </p>
-                            )}
-                        </div>
-                    </div>
+                    <section aria-labelledby="footer-newsletter-heading">
+                        <h2 id="footer-newsletter-heading" className="text-base font-semibold text-text-inverse">Nhận ưu đãi</h2>
+                        <p className="mt-4 text-sm leading-6 text-text-inverse/70">Đăng ký email để nhận ưu đãi dành cho khách hàng mới.</p>
+                        <form className="mt-4 flex flex-col gap-2 sm:flex-row xl:flex-col" onSubmit={handleNewsletterSubmit} noValidate>
+                            <label className="sr-only" htmlFor="footer-newsletter-email">Email nhận ưu đãi</label>
+                            <Input
+                                id="footer-newsletter-email"
+                                type="email"
+                                autoComplete="email"
+                                value={newsletterEmail}
+                                onChange={(event) => {
+                                    setNewsletterEmail(event.target.value);
+                                    if (newsletterMessage) {
+                                        setNewsletterMessage("");
+                                        setNewsletterStatus("");
+                                    }
+                                }}
+                                disabled={newsletterLoading}
+                                aria-invalid={newsletterStatus === "error" ? true : undefined}
+                                aria-describedby={newsletterMessage ? statusId : undefined}
+                                placeholder="Email của bạn"
+                                className="min-w-0 border-text-inverse/25 bg-text-inverse/10 text-text-inverse placeholder:text-text-inverse/60 focus-visible:border-primary focus-visible:ring-primary/40 focus-visible:ring-offset-text-strong"
+                            />
+                            <Button type="submit" loading={newsletterLoading} className="shrink-0 sm:w-auto xl:w-full">
+                                Đăng ký
+                            </Button>
+                        </form>
+                        {newsletterMessage && (
+                            <p id={statusId} role={newsletterStatus === "error" ? "alert" : "status"} className={`mt-3 text-sm leading-6 ${newsletterStatus === "success" ? "text-success" : "text-destructive"}`}>
+                                {newsletterMessage}
+                            </p>
+                        )}
+                    </section>
                 </div>
 
-                {/* Bottom bar */}
-                <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <p className="text-xs text-white/40">
-                        © {year} PetMart. Bảo lưu mọi quyền. 🐾 Made with ❤️ for pets.
-                    </p>
-                    <div className="flex items-center gap-3">
-                        <Link to="/privacy" className="text-xs text-white/40 hover:text-white/80 transition-colors">Bảo mật</Link>
-                        <Link to="/terms" className="text-xs text-white/40 hover:text-white/80 transition-colors">Điều khoản</Link>
-                        {/* Payment icons */}
-                        <div className="flex gap-2 ml-2 opacity-50">
-                            <span className="text-xs bg-white/10 rounded px-2 py-0.5">VISA</span>
-                            <span className="text-xs bg-white/10 rounded px-2 py-0.5">MB</span>
-                            <span className="text-xs bg-white/10 rounded px-2 py-0.5">MOMO</span>
-                        </div>
-                    </div>
+                <div className="mt-12 flex flex-col gap-4 border-t border-text-inverse/15 pt-6 text-sm text-text-inverse/60 sm:flex-row sm:items-center sm:justify-between">
+                    <p>© {year} PetMart. Bảo lưu mọi quyền.</p>
+                    <span aria-label="Phương thức thanh toán được hỗ trợ">Thanh toán khi nhận hàng · VNPay</span>
                 </div>
             </div>
         </footer>

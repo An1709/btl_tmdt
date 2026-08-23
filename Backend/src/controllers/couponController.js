@@ -136,6 +136,26 @@ export const updateCoupon = async (req, res, next) => {
     }
 };
 
+export const deleteCoupon = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        if (!id?.match(/^[a-f\d]{24}$/i)) {
+            return res.status(400).json({ message: 'Mã giảm giá không hợp lệ.' });
+        }
+
+        const coupon = await Coupon.findByIdAndDelete(id);
+
+        if (!coupon) {
+            return res.status(404).json({ message: 'Không tìm thấy mã giảm giá.' });
+        }
+
+        return res.json({ message: 'Đã xóa mã giảm giá.' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // @desc    Kiểm tra mã giảm giá
 // @route   POST /api/coupons/check
 export const checkCoupon = async (req, res) => {
@@ -170,6 +190,11 @@ export const checkCoupon = async (req, res) => {
         } else {
             discountAmount = coupon.value;
         }
+
+        discountAmount = Math.min(
+            Math.max(Number(discountAmount) || 0, 0),
+            Math.max(Number(orderTotal) || 0, 0),
+        );
 
         res.json({ 
             valid: true, 

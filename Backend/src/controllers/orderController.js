@@ -9,6 +9,11 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import vnpayConfig from '../config/vnpayConfig.js';
 import { isValidVietnamMobilePhone, normalizeVietnamPhone } from '../utils/vietnamPhone.js';
+import {
+    releaseOrderReservations,
+    reserveCouponUsage,
+    reserveOrderInventory,
+} from '../services/orderReservationService.js';
 
 const ORDER_STATUS_FLOW = ['Pending', 'Processing', 'Shipping', 'Delivered'];
 const CUSTOMER_CANCELLABLE_STATUSES = ['Pending', 'Processing'];
@@ -51,14 +56,16 @@ const normalizeSelectedCartProductIds = (value) => {
     )];
 };
 
-const buildOrderFromSelectedCartItems = async (userId, selectedCartItemIds = []) => {
+const buildOrderFromSelectedCartItems = async (userId, selectedCartItemIds = [], session = null) => {
     const selectedIds = normalizeSelectedCartProductIds(selectedCartItemIds);
 
     if (!selectedIds.length) {
         return { error: 'Vui lòng chọn ít nhất một sản phẩm để thanh toán.' };
     }
 
-    const cart = await Cart.findOne({ user: userId }).populate('items.product');
+    const cartQuery = Cart.findOne({ user: userId }).populate('items.product');
+    if (session) cartQuery.session(session);
+    const cart = await cartQuery;
     const selectedSet = new Set(selectedIds);
     const selectedCartItems = (cart?.items || []).filter((item) => {
         const productId = item.product?._id?.toString?.() || item.product?.toString?.();
@@ -104,11 +111,13 @@ const buildOrderFromSelectedCartItems = async (userId, selectedCartItemIds = [])
     };
 };
 
-const calculateCouponDiscount = async (couponId, itemsPrice) => {
+const calculateCouponDiscount = async (couponId, itemsPrice, session = null) => {
     if (!couponId) return { discountAmount: 0 };
     if (!mongoose.isValidObjectId(couponId)) return { error: 'Mã giảm giá không hợp lệ.' };
 
-    const coupon = await Coupon.findById(couponId);
+    const couponQuery = Coupon.findById(couponId);
+    if (session) couponQuery.session(session);
+    const coupon = await couponQuery;
     if (!coupon) return { error: 'Mã giảm giá không tồn tại.' };
     if (new Date() > coupon.expirationDate) return { error: 'Mã đã hết hạn.' };
     if (itemsPrice < coupon.minOrderValue) return { error: `Đơn hàng tối thiểu phải là ${coupon.minOrderValue}đ.` };
@@ -126,13 +135,14 @@ const calculateCouponDiscount = async (couponId, itemsPrice) => {
     };
 };
 
-const removePurchasedCartItems = async (userId, productIds = []) => {
+const removePurchasedCartItems = async (userId, productIds = [], session = null) => {
     const ids = normalizeSelectedCartProductIds(productIds);
     if (!ids.length) return;
 
     await Cart.updateOne(
         { user: userId },
         { $pull: { items: { product: { $in: ids } } } },
+        { session },
     );
 };
 
@@ -389,8 +399,8 @@ function buildVNPayUrl(orderId, amount, ipAddr) {
     const now = moment().utcOffset('+07:00');
     const createDate = now.format('YYYYMMDDHHmmss');
     const expireDate = now.clone().add(15, 'minutes').format('YYYYMMDDHHmmss');
-    // txnRef must be unique per transaction; use last 8 chars of Mongo ObjectId
-    const txnRef = String(orderId).slice(-8).toUpperCase();
+    // A full ObjectId is short enough for VNPay and avoids suffix collisions.
+    const txnRef = String(orderId).toUpperCase();
     const rawIp = String(ipAddr || '127.0.0.1').split(',')[0].trim();
 
     let vnp_Params = {};
@@ -433,10 +443,21 @@ export const addOrderItems = async (req, res, next) => {
         shippingAddress,
         paymentMethod,
         coupon,
+        checkoutRequestId,
     } = req.body;
 
     if (!Array.isArray(selectedCartItemIds) || selectedCartItemIds.length === 0) {
         return res.status(400).json({ message: 'Giỏ hàng trống' });
+    }
+
+    const normalizedPaymentMethod = String(paymentMethod || '').trim().toLowerCase();
+    if (!['cod', 'vnpay'].includes(normalizedPaymentMethod)) {
+        return res.status(400).json({ message: 'Phương thức thanh toán không hợp lệ.' });
+    }
+
+    const normalizedCheckoutRequestId = String(checkoutRequestId || '').trim();
+    if (normalizedCheckoutRequestId && (normalizedCheckoutRequestId.length < 16 || normalizedCheckoutRequestId.length > 128)) {
+        return res.status(400).json({ message: 'Mã yêu cầu thanh toán không hợp lệ.' });
     }
 
     try {
@@ -445,66 +466,119 @@ export const addOrderItems = async (req, res, next) => {
             return res.status(400).json({ message: normalizedAddress.error });
         }
 
-        if (paymentMethod && paymentMethod.toLowerCase() === 'vnpay') {
+        if (normalizedPaymentMethod === 'vnpay') {
             getVNPaySettings();
         }
 
-        const selectedCartOrder = await buildOrderFromSelectedCartItems(req.user._id, selectedCartItemIds);
+        let createdOrder;
+        let reusedExistingOrder = false;
 
-        if (selectedCartOrder?.error) {
-            return res.status(400).json({ message: selectedCartOrder.error });
-        }
+        try {
+            await mongoose.connection.transaction(async (session) => {
+                if (normalizedCheckoutRequestId) {
+                    const existingOrder = await Order.findOne({
+                        user: req.user._id,
+                        checkoutRequestId: normalizedCheckoutRequestId,
+                    }).session(session);
 
-        const safeOrderItems = selectedCartOrder.orderItems;
-        const safeItemsPrice = selectedCartOrder.itemsPrice;
-        const safeShippingPrice = selectedCartOrder.shippingPrice;
-        const couponResult = await calculateCouponDiscount(coupon, safeItemsPrice);
+                    if (existingOrder) {
+                        createdOrder = existingOrder;
+                        reusedExistingOrder = true;
+                        return;
+                    }
+                }
 
-        if (couponResult.error) {
-            return res.status(400).json({ message: couponResult.error });
-        }
+                const selectedCartOrder = await buildOrderFromSelectedCartItems(
+                    req.user._id,
+                    selectedCartItemIds,
+                    session,
+                );
 
-        const safeDiscountAmount = couponResult.discountAmount;
-        const safeTotalPrice = Math.max(safeItemsPrice + safeShippingPrice - safeDiscountAmount, 0);
+                if (selectedCartOrder?.error) {
+                    const error = new Error(selectedCartOrder.error);
+                    error.statusCode = 400;
+                    throw error;
+                }
 
-        // 1. Save the order
-        const order = new Order({
-            orderItems: safeOrderItems,
-            selectedCartProductIds: selectedCartOrder.selectedCartProductIds,
-            user: req.user._id,
-            shippingAddress: normalizedAddress.value,
-            paymentMethod,
-            itemsPrice: safeItemsPrice,
-            shippingPrice: safeShippingPrice,
-            totalPrice: safeTotalPrice,
-            discountAmount: safeDiscountAmount || 0,
-            ...(coupon && { coupon }),
-        });
-        appendStatusHistory(order, {
-            status: 'Created',
-            note: ORDER_STATUS_NOTES.Created,
-            user: req.user,
-        });
-        appendStatusHistory(order, {
-            status: 'Pending',
-            note: ORDER_STATUS_NOTES.Pending,
-            user: req.user,
-        });
+                const safeOrderItems = selectedCartOrder.orderItems;
+                const safeItemsPrice = selectedCartOrder.itemsPrice;
+                const safeShippingPrice = selectedCartOrder.shippingPrice;
+                const couponResult = await calculateCouponDiscount(coupon, safeItemsPrice, session);
 
-        const createdOrder = await order.save();
+                if (couponResult.error) {
+                    const error = new Error(couponResult.error);
+                    error.statusCode = 400;
+                    throw error;
+                }
 
-        // 2. Decrement stock
-        for (const item of safeOrderItems) {
-            const product = await Product.findById(item.product);
-            if (product) {
-                product.stock = Math.max(0, product.stock - item.qty);
-                product.sold = (product.sold || 0) + item.qty;
-                await product.save();
+                const safeDiscountAmount = couponResult.discountAmount;
+                const safeTotalPrice = Math.max(safeItemsPrice + safeShippingPrice - safeDiscountAmount, 0);
+
+                await reserveOrderInventory(safeOrderItems, session);
+                const couponUsageCounted = await reserveCouponUsage(
+                    couponResult.coupon,
+                    safeItemsPrice,
+                    session,
+                );
+
+                const order = new Order({
+                    orderItems: safeOrderItems,
+                    selectedCartProductIds: selectedCartOrder.selectedCartProductIds,
+                    checkoutRequestId: normalizedCheckoutRequestId || undefined,
+                    user: req.user._id,
+                    shippingAddress: normalizedAddress.value,
+                    paymentMethod: normalizedPaymentMethod,
+                    itemsPrice: safeItemsPrice,
+                    shippingPrice: safeShippingPrice,
+                    totalPrice: safeTotalPrice,
+                    discountAmount: safeDiscountAmount || 0,
+                    inventoryReservationActive: true,
+                    couponUsageCounted,
+                    ...(couponResult.coupon && { coupon: couponResult.coupon._id }),
+                });
+                appendStatusHistory(order, {
+                    status: 'Created',
+                    note: ORDER_STATUS_NOTES.Created,
+                    user: req.user,
+                });
+                appendStatusHistory(order, {
+                    status: 'Pending',
+                    note: ORDER_STATUS_NOTES.Pending,
+                    user: req.user,
+                });
+
+                createdOrder = await order.save({ session });
+
+                if (normalizedPaymentMethod === 'cod') {
+                    await removePurchasedCartItems(
+                        req.user._id,
+                        createdOrder.selectedCartProductIds,
+                        session,
+                    );
+                }
+            });
+        } catch (error) {
+            if (error?.code === 11000 && normalizedCheckoutRequestId) {
+                createdOrder = await Order.findOne({
+                    user: req.user._id,
+                    checkoutRequestId: normalizedCheckoutRequestId,
+                });
+                reusedExistingOrder = Boolean(createdOrder);
             }
+
+            if (!createdOrder) throw error;
         }
 
-        // 3. If VNPay: generate payment URL and include it in response
-        if (paymentMethod && paymentMethod.toLowerCase() === 'vnpay') {
+        if (!createdOrder) {
+            return res.status(500).json({ message: 'Không thể tạo đơn hàng.' });
+        }
+
+        if (
+            normalizedPaymentMethod === 'vnpay'
+            && !createdOrder.isPaid
+            && createdOrder.status !== 'Cancelled'
+            && createdOrder.inventoryReservationActive
+        ) {
             const ipAddr =
                 req.headers['x-forwarded-for'] ||
                 req.socket?.remoteAddress ||
@@ -513,17 +587,21 @@ export const addOrderItems = async (req, res, next) => {
 
             const paymentUrl = buildVNPayUrl(createdOrder._id, createdOrder.totalPrice, ipAddr);
 
-            return res.status(201).json({ ...withStatusHistory(createdOrder), paymentUrl });
+            return res.status(reusedExistingOrder ? 200 : 201).json({
+                ...withStatusHistory(createdOrder),
+                paymentUrl,
+            });
         }
 
-        await removePurchasedCartItems(req.user._id, createdOrder.selectedCartProductIds);
-
-        // 4. COD: return order as-is
-        return res.status(201).json(withStatusHistory(createdOrder));
+        return res.status(reusedExistingOrder ? 200 : 201).json(withStatusHistory(createdOrder));
 
     } catch (error) {
         if (error?.message === VNPAY_CONFIG_ERROR) {
             return res.status(error.statusCode || 500).json({ message: VNPAY_CONFIG_ERROR });
+        }
+
+        if (error?.statusCode && error.statusCode < 500) {
+            return res.status(error.statusCode).json({ message: error.message });
         }
 
         console.error('Create order error:', error);
@@ -669,48 +747,63 @@ export const requestOrderCancellation = async (req, res, next) => {
 export const resolveOrderCancellation = async (req, res, next) => {
     try {
         const { action, reason } = req.body;
-        const order = await Order.findById(req.params.id);
+        let updatedOrder;
 
-        if (!order) {
-            return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
-        }
+        await mongoose.connection.transaction(async (session) => {
+            const order = await Order.findById(req.params.id).session(session);
 
-        if (order.cancelStatus !== 'pending') {
-            return res.status(400).json({ message: 'Đơn hàng không có yêu cầu hủy đang chờ xử lý.' });
-        }
+            if (!order) {
+                const error = new Error('Không tìm thấy đơn hàng.');
+                error.statusCode = 404;
+                throw error;
+            }
 
-        if (action === 'approve') {
-            order.status = 'Cancelled';
-            order.cancelRequested = false;
-            order.cancelStatus = 'approved';
-            order.cancelResolvedAt = new Date();
-            order.cancelRejectionReason = undefined;
-            appendStatusHistory(order, {
-                status: 'Cancelled',
-                note: ORDER_STATUS_NOTES.Cancelled,
-                user: req.user,
-                updatedAt: order.cancelResolvedAt,
-            });
-        } else if (action === 'reject') {
-            order.cancelRequested = false;
-            order.cancelStatus = 'rejected';
-            order.cancelResolvedAt = new Date();
-            order.cancelRejectionReason = String(reason || '').trim();
-            appendStatusHistory(order, {
-                status: 'CancelRejected',
-                note: order.cancelRejectionReason
-                    ? `${ORDER_STATUS_NOTES.CancelRejected}: ${order.cancelRejectionReason}`
-                    : ORDER_STATUS_NOTES.CancelRejected,
-                user: req.user,
-                updatedAt: order.cancelResolvedAt,
-            });
-        } else {
-            return res.status(400).json({ message: 'Hành động xử lý yêu cầu hủy không hợp lệ.' });
-        }
+            if (order.cancelStatus !== 'pending') {
+                const error = new Error('Đơn hàng không có yêu cầu hủy đang chờ xử lý.');
+                error.statusCode = 400;
+                throw error;
+            }
 
-        const updatedOrder = await order.save();
+            if (action === 'approve') {
+                await releaseOrderReservations(order, session);
+                order.status = 'Cancelled';
+                order.cancelRequested = false;
+                order.cancelStatus = 'approved';
+                order.cancelResolvedAt = new Date();
+                order.cancelRejectionReason = undefined;
+                appendStatusHistory(order, {
+                    status: 'Cancelled',
+                    note: ORDER_STATUS_NOTES.Cancelled,
+                    user: req.user,
+                    updatedAt: order.cancelResolvedAt,
+                });
+            } else if (action === 'reject') {
+                order.cancelRequested = false;
+                order.cancelStatus = 'rejected';
+                order.cancelResolvedAt = new Date();
+                order.cancelRejectionReason = String(reason || '').trim();
+                appendStatusHistory(order, {
+                    status: 'CancelRejected',
+                    note: order.cancelRejectionReason
+                        ? `${ORDER_STATUS_NOTES.CancelRejected}: ${order.cancelRejectionReason}`
+                        : ORDER_STATUS_NOTES.CancelRejected,
+                    user: req.user,
+                    updatedAt: order.cancelResolvedAt,
+                });
+            } else {
+                const error = new Error('Hành động xử lý yêu cầu hủy không hợp lệ.');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            updatedOrder = await order.save({ session });
+        });
+
         res.status(200).json(withStatusHistory(updatedOrder));
     } catch (error) {
+        if (error?.statusCode && error.statusCode < 500) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         next(error);
     }
 };

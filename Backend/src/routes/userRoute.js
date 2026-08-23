@@ -3,6 +3,7 @@ import {
     getUserProfile,
     updateUserProfile,
     updateUserAvatar,
+    changeOwnPassword,
     getAllUsers,
     createUser,
     updateUser,
@@ -33,6 +34,7 @@ const uploadAvatar = (req, res, next) => {
 };
 
 router.put('/me/avatar', protectedRoute, uploadAvatar, updateUserAvatar);
+router.put('/me/password', protectedRoute, changeOwnPassword);
 
 router.route('/')
     .get(protectedRoute, adminRoute, getAllUsers)

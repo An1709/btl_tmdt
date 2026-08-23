@@ -2,14 +2,8 @@ import api from "@/lib/axios";
 import type { Order, OrderStatus, PaymentMethod } from "@/types/order";
 
 export interface CreateOrderPayload {
-    selectedCartItemIds?: string[];
-    orderItems: {
-        product: string;
-        name: string;
-        qty: number;
-        price: number;
-        image: string;
-    }[];
+    checkoutRequestId: string;
+    selectedCartItemIds: string[];
     shippingAddress: {
         fullName: string;
         phone: string;
@@ -22,10 +16,6 @@ export interface CreateOrderPayload {
         city: string;
     };
     paymentMethod: PaymentMethod;
-    itemsPrice: number;
-    shippingPrice: number;
-    totalPrice: number;
-    discountAmount?: number;
     coupon?: string; // couponId
 }
 

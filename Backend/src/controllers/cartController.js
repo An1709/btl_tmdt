@@ -48,9 +48,18 @@ export const addCartItem = async (req, res, next) => {
 
         const cart = await getOrCreateCart(req.user._id);
         const existingItem = cart.items.find((item) => item.product.toString() === productId);
+        const nextQuantity = (existingItem?.quantity ?? 0) + numericQuantity;
+
+        if (product.stock < nextQuantity) {
+            return res.status(400).json({
+                message: product.stock > 0
+                    ? `Chỉ còn ${product.stock} sản phẩm trong kho. Giỏ hàng của bạn không thể vượt quá số lượng này.`
+                    : 'Sản phẩm hiện đã hết hàng.',
+            });
+        }
 
         if (existingItem) {
-            existingItem.quantity += numericQuantity;
+            existingItem.quantity = nextQuantity;
         } else {
             cart.items.push({ product: productId, quantity: numericQuantity });
         }
@@ -70,31 +79,60 @@ export const addComboItems = async (req, res, next) => {
             : Array.isArray(req.body?.productIds)
                 ? req.body.productIds.map((productId) => ({ productId, quantity: 1 }))
                 : [];
-        const normalizedItems = rawItems
-            .map((item) => ({
+        const normalizedItems = rawItems.map((item) => ({
                 productId: String(item?.productId || item?.product || '').trim(),
-                quantity: Number(item?.quantity || 1),
-            }))
-            .filter((item) =>
-                mongoose.isValidObjectId(item.productId)
-                && Number.isInteger(item.quantity)
-                && item.quantity > 0,
+                quantity: Number(item?.quantity ?? 1),
+            }));
+
+        if (
+            !normalizedItems.length
+            || normalizedItems.some((item) =>
+                !mongoose.isValidObjectId(item.productId)
+                || !Number.isInteger(item.quantity)
+                || item.quantity < 1,
+            )
+        ) {
+            return res.status(400).json({ message: 'Danh sách sản phẩm combo không hợp lệ.' });
+        }
+
+        const quantitiesByProduct = new Map();
+        normalizedItems.forEach((item) => {
+            quantitiesByProduct.set(
+                item.productId,
+                (quantitiesByProduct.get(item.productId) ?? 0) + item.quantity,
             );
+        });
+        const comboItems = [...quantitiesByProduct.entries()].map(([productId, quantity]) => ({
+            productId,
+            quantity,
+        }));
 
-        if (!normalizedItems.length) {
-            return res.status(400).json({ message: 'Danh sÃ¡ch sáº£n pháº©m combo khÃ´ng há»£p lá»‡.' });
+        if (comboItems.some((item) => !Number.isSafeInteger(item.quantity))) {
+            return res.status(400).json({ message: 'Số lượng sản phẩm combo không hợp lệ.' });
         }
 
-        const productIds = [...new Set(normalizedItems.map((item) => item.productId))];
-        const products = await Product.find({ _id: { $in: productIds }, stock: { $gt: 0 } }).select('_id stock');
-        const inStockIds = new Set(products.map((product) => product._id.toString()));
-        const comboItems = normalizedItems.filter((item) => inStockIds.has(item.productId));
-
-        if (!comboItems.length) {
-            return res.status(400).json({ message: 'CÃ¡c sáº£n pháº©m combo hiá»‡n Ä‘Ã£ háº¿t hÃ ng.' });
+        const productIds = comboItems.map((item) => item.productId);
+        const products = await Product.find({ _id: { $in: productIds } }).select('_id name stock');
+        if (products.length !== productIds.length) {
+            return res.status(404).json({ message: 'Một hoặc nhiều sản phẩm trong combo không còn tồn tại.' });
         }
 
+        const productsById = new Map(products.map((product) => [product._id.toString(), product]));
         const cart = await getOrCreateCart(req.user._id);
+
+        for (const item of comboItems) {
+            const product = productsById.get(item.productId);
+            const existingItem = cart.items.find((cartItem) => cartItem.product.toString() === item.productId);
+            const nextQuantity = (existingItem?.quantity ?? 0) + item.quantity;
+
+            if (!product || product.stock < nextQuantity) {
+                return res.status(400).json({
+                    message: product?.stock > 0
+                        ? `${product.name} chỉ còn ${product.stock} sản phẩm trong kho.`
+                        : `${product?.name || 'Một sản phẩm trong combo'} hiện đã hết hàng.`,
+                });
+            }
+        }
 
         comboItems.forEach((item) => {
             const existingItem = cart.items.find((cartItem) => cartItem.product.toString() === item.productId);
@@ -134,6 +172,19 @@ export const updateCartItem = async (req, res, next) => {
         if (numericQuantity <= 0) {
             cart.items = cart.items.filter((cartItem) => cartItem.product.toString() !== productId);
         } else {
+            const product = await Product.findById(productId).select('stock');
+            if (!product) {
+                return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
+            }
+
+            if (product.stock < numericQuantity) {
+                return res.status(400).json({
+                    message: product.stock > 0
+                        ? `Chỉ còn ${product.stock} sản phẩm trong kho.`
+                        : 'Sản phẩm hiện đã hết hàng.',
+                });
+            }
+
             item.quantity = numericQuantity;
         }
 

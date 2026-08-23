@@ -9,7 +9,16 @@ const ProtectedRoute = () => {
     if (!initialized || loading) return <Loading fullPage text="Đang xác thực..." />;
 
     if (!accessToken || !user) {
-        return <Navigate to="/signin" replace state={{ from: location.pathname }} />;
+        return (
+            <Navigate
+                to="/signin"
+                replace
+                state={{
+                    from: `${location.pathname}${location.search}${location.hash}`,
+                    routeState: location.state,
+                }}
+            />
+        );
     }
 
     return <Outlet />;

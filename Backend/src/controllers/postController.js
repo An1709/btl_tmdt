@@ -25,6 +25,7 @@ const normalizeTags = (tags) => {
 };
 
 const buildExcerpt = (content) => content.replace(/<[^>]+>/g, '').slice(0, 160);
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const COMMENT_USER_SELECT = 'username displayName avatarUrl avatar photoURL image';
 
@@ -125,10 +126,11 @@ export const getPosts = async (req, res) => {
 
         const filter = { type: 'blog' };
         if (search) {
+            const safeSearch = escapeRegex(search);
             filter.$or = [
-                { title: { $regex: search, $options: 'i' } },
-                { tags: { $regex: search, $options: 'i' } },
-                { content: { $regex: search, $options: 'i' } },
+                { title: { $regex: safeSearch, $options: 'i' } },
+                { tags: { $regex: safeSearch, $options: 'i' } },
+                { content: { $regex: safeSearch, $options: 'i' } },
             ];
         }
 
@@ -146,7 +148,7 @@ export const getPosts = async (req, res) => {
         const summaryMap = await getCommentSummary(posts.map((p) => p._id));
         const mapped = posts.map((p) => mapPost(
             p,
-            `https://images.unsplash.com/photo-${p._id}?w=800&h=450&fit=crop`,
+            '',
             getPostSummary(p, summaryMap),
         ));
 
@@ -189,7 +191,7 @@ export const getPostBySlug = async (req, res) => {
             data: {
                 ...mapPost(
                     post,
-                    'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800&h=450&fit=crop',
+                    '',
                     { averageRating, commentCount, reviewCount: commentCount },
                     comments.map(mapComment),
                 ),
